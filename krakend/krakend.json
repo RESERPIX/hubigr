@@ -1,0 +1,253 @@
+{
+  "version": 3,
+  "name": "Hubigr API Gateway",
+  "timeout": "3000ms",
+  "cache_ttl": "300s",
+  "output_encoding": "json",
+  "port": 8000,
+  "endpoints": [
+    {
+      "endpoint": "/api/v1/auth/signup",
+      "method": "POST",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/auth/signup",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": ["http://auth:8080"],
+          "disable_host_sanitize": false
+        }
+      ],
+      "extra_config": {
+        "qos/ratelimit/router": {
+          "max_rate": 5,
+          "capacity": 10
+        }
+      }
+    },
+    {
+      "endpoint": "/api/v1/auth/login",
+      "method": "POST",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/auth/login",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": ["http://auth:8080"],
+          "disable_host_sanitize": false
+        }
+      ],
+      "extra_config": {
+        "qos/ratelimit/router": {
+          "max_rate": 5,
+          "capacity": 10
+        }
+      }
+    },
+    {
+      "endpoint": "/api/v1/auth/verify-email",
+      "method": "POST",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/auth/verify-email",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": ["http://auth:8080"],
+          "disable_host_sanitize": false
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/v1/auth/resend-verification",
+      "method": "POST",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/auth/resend-verification",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": ["http://auth:8080"],
+          "disable_host_sanitize": false
+        }
+      ],
+      "extra_config": {
+        "qos/ratelimit/router": {
+          "max_rate": 5,
+          "capacity": 10
+        }
+      }
+    },
+    {
+      "endpoint": "/api/v1/auth/reset-password",
+      "method": "POST",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/auth/reset-password",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": ["http://auth:8080"],
+          "disable_host_sanitize": false
+        }
+      ],
+      "extra_config": {
+        "qos/ratelimit/router": {
+          "max_rate": 5,
+          "capacity": 10
+        }
+      }
+    },
+    {
+      "endpoint": "/api/v1/auth/reset-password/confirm",
+      "method": "POST",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/auth/reset-password/confirm",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": ["http://auth:8080"],
+          "disable_host_sanitize": false
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/v1/auth/logout",
+      "method": "POST",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/auth/logout",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": ["http://auth:8080"],
+          "disable_host_sanitize": false
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/v1/profile",
+      "method": "GET",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/profile",
+          "encoding": "json",
+          "sd": "static",
+          "method": "GET",
+          "host": ["http://auth:8080"],
+          "disable_host_sanitize": false
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/v1/profile",
+      "method": "PUT",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/profile",
+          "encoding": "json",
+          "sd": "static",
+          "method": "PUT",
+          "host": ["http://auth:8080"],
+          "disable_host_sanitize": false
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/v1/profile/notifications",
+      "method": "GET",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/profile/notifications",
+          "encoding": "json",
+          "sd": "static",
+          "method": "GET",
+          "host": ["http://auth:8080"],
+          "disable_host_sanitize": false
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/v1/profile/notifications",
+      "method": "PUT",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/profile/notifications",
+          "encoding": "json",
+          "sd": "static",
+          "method": "PUT",
+          "host": ["http://auth:8080"],
+          "disable_host_sanitize": false
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/v1/profile/submissions",
+      "method": "GET",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/profile/submissions",
+          "encoding": "json",
+          "sd": "static",
+          "method": "GET",
+          "host": ["http://auth:8080"],
+          "disable_host_sanitize": false
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/v1/profile/avatar",
+      "method": "POST",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/profile/avatar",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": ["http://auth:8080"],
+          "disable_host_sanitize": false
+        }
+      ]
+    },
+    {
+      "endpoint": "/uploads/{file}",
+      "method": "GET",
+      "output_encoding": "no-op",
+      "backend": [
+        {
+          "url_pattern": "/uploads/{file}",
+          "encoding": "no-op",
+          "sd": "static",
+          "method": "GET",
+          "host": ["http://auth:8080"],
+          "disable_host_sanitize": false
+        }
+      ]
+    }
+  ],
+  "extra_config": {
+    "security/cors": {
+      "allow_origins": ["*"],
+      "allow_methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      "allow_headers": ["Origin", "Authorization", "Content-Type"],
+      "expose_headers": ["Content-Length"],
+      "max_age": "12h"
+    }
+  }
+}

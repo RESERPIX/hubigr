@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # PostgreSQL база данных
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: hubigr
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d hubigr"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis для кеширования и rate limiting
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Auth сервис
+  auth:
+    build:
+      context: .
+      dockerfile: Dockerfile.auth
+    environment:
+      PORT: 8080
+      DATABASE_URL: postgres://user:pass@postgres:5432/hubigr?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-hubigr-super-secret-jwt-key-change-in-production-2024}
+      BASE_URL: http://localhost:3000
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-noreply@hubigr.com}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # KrakenD API Gateway
+  krakend:
+    image: devopsfaith/krakend:2.5
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./krakend:/etc/krakend
+    command: ["run", "-d", "-c", "/etc/krakend/krakend.json"]
+    depends_on:
+      - auth
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
