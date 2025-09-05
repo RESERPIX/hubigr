@@ -3,6 +3,7 @@ package security
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -41,6 +42,10 @@ func SignJWT(userID int64, role, nick, secret string) (string, error) {
 
 func VerifyJWT(tokenString, secret string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		// Проверка алгоритма подписи
+		if token.Method != jwt.SigningMethodHS256 {
+			return nil, fmt.Errorf("неподдерживаемый алгоритм: %v", token.Method)
+		}
 		return []byte(secret), nil
 	})
 	if err != nil {
@@ -55,6 +60,9 @@ func VerifyJWT(tokenString, secret string) (*Claims, error) {
 // GenerateToken - для email verification (UC-1.1.1)
 func GenerateToken() string {
 	bytes := make([]byte, 32)
-	rand.Read(bytes)
+	if _, err := rand.Read(bytes); err != nil {
+		// Критическая ошибка криптографии
+		panic(fmt.Sprintf("ошибка генерации случайных байт: %v", err))
+	}
 	return hex.EncodeToString(bytes)
 }

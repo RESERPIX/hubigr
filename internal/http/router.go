@@ -1,6 +1,8 @@
 package http
 
 import (
+	"time"
+
 	"github.com/RESERPIX/hubigr/internal/domain"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -24,16 +26,16 @@ func SetupRoutes(app *fiber.App, handlers *Handlers, jwtSecret string) {
 
 	// Auth routes (API-4.1 - API-4.5 из ТЗ)
 	auth := api.Group("/auth")
-	auth.Post("/signup", LoginRateLimitMiddleware(handlers.limiter), handlers.SignUp)
-	auth.Post("/login", LoginRateLimitMiddleware(handlers.limiter), handlers.Login)
+	auth.Post("/signup", LoginRateLimitMiddleware(handlers.limiter), CaptchaMiddleware(handlers.turnstile), handlers.SignUp)
+	auth.Post("/login", LoginRateLimitMiddleware(handlers.limiter), CaptchaMiddleware(handlers.turnstile), handlers.Login)
 	auth.Post("/logout", handlers.Logout)
 	auth.Post("/verify-email", handlers.VerifyEmail)
-	auth.Post("/resend-verification", LoginRateLimitMiddleware(handlers.limiter), handlers.ResendVerification)
-	auth.Post("/reset-password", LoginRateLimitMiddleware(handlers.limiter), handlers.ResetPasswordRequest)
+	auth.Post("/resend-verification", LoginRateLimitMiddleware(handlers.limiter), CaptchaMiddleware(handlers.turnstile), handlers.ResendVerification)
+	auth.Post("/reset-password", LoginRateLimitMiddleware(handlers.limiter), CaptchaMiddleware(handlers.turnstile), handlers.ResetPasswordRequest)
 	auth.Post("/reset-password/confirm", handlers.ResetPasswordConfirm)
 
 	// Profile routes (API-4.6 - API-4.8 из ТЗ)
-	profile := api.Group("/profile", AuthMiddleware(jwtSecret), LoggingMiddleware())
+	profile := api.Group("/profile", AuthMiddleware(jwtSecret), LoggingMiddleware(), RateLimitMiddleware(handlers.limiter, "profile", 30, time.Minute))
 	profile.Get("/", handlers.GetProfile)
 	profile.Put("/", handlers.UpdateProfile)
 	profile.Get("/notifications", handlers.GetNotifications)

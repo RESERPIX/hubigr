@@ -5,17 +5,18 @@ import (
 )
 
 type Config struct {
-	Port        string
-	DatabaseURL string
-	RedisURL    string
-	JWTSecret   string
-	SMTPHost    string
-	SMTPPort    string
-	SMTPUser    string
-	SMTPPass    string
-	SMTPFrom    string
-	BaseURL     string
-	LogLevel    string
+	Port              string
+	DatabaseURL       string
+	RedisURL          string
+	JWTSecret         string
+	SMTPHost          string
+	SMTPPort          string
+	SMTPUser          string
+	SMTPPass          string
+	SMTPFrom          string
+	BaseURL           string
+	LogLevel          string
+	TurnstileSecret   string
 }
 
 func Load() *Config {
@@ -29,8 +30,9 @@ func Load() *Config {
 		SMTPUser:    getEnv("SMTP_USER", ""),
 		SMTPPass:    getEnv("SMTP_PASS", ""),
 		SMTPFrom:    getEnv("SMTP_FROM", "noreply@hubigr.com"),
-		BaseURL:     getEnv("BASE_URL", "http://localhost:3000"),
-		LogLevel:    getEnv("LOG_LEVEL", "info"),
+		BaseURL:         getEnv("BASE_URL", "http://localhost:3000"),
+		LogLevel:        getEnv("LOG_LEVEL", "info"),
+		TurnstileSecret: getEnv("TURNSTILE_SECRET", ""),
 	}
 }
 

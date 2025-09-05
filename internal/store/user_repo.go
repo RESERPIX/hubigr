@@ -45,8 +45,12 @@ func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*domain.User, 
 		return nil, err
 	}
 
-	json.Unmarshal(linksJSON, &u.Links)
-	json.Unmarshal(privacyJSON, &u.PrivacySettings)
+	if err := json.Unmarshal(linksJSON, &u.Links); err != nil {
+		u.Links = []domain.Link{}
+	}
+	if err := json.Unmarshal(privacyJSON, &u.PrivacySettings); err != nil {
+		u.PrivacySettings = domain.PrivacySettings{}
+	}
 	return &u, nil
 }
 
@@ -84,15 +88,21 @@ func (r *UserRepo) VerifyEmail(ctx context.Context, token string) (bool, error) 
 
 // UpdateProfile - UC-1.2.1
 func (r *UserRepo) UpdateProfile(ctx context.Context, userID int64, req domain.UpdateProfileRequest) error {
-	linksJSON, _ := json.Marshal(req.Links)
-	privacyJSON, _ := json.Marshal(req.PrivacySettings)
+	linksJSON, err := json.Marshal(req.Links)
+	if err != nil {
+		return err
+	}
+	privacyJSON, err2 := json.Marshal(req.PrivacySettings)
+	if err2 != nil {
+		return err2
+	}
 
-	_, err := r.db.Exec(ctx, `
+	_, err3 := r.db.Exec(ctx, `
 		UPDATE users 
 		SET nick = $2, avatar = $3, bio = $4, links = $5, privacy_settings = $6
 		WHERE id = $1`,
 		userID, req.Nick, req.Avatar, req.Bio, linksJSON, privacyJSON)
-	return err
+	return err3
 }
 
 // GetByID - для профиля
@@ -112,21 +122,28 @@ func (r *UserRepo) GetByID(ctx context.Context, userID int64) (*domain.User, err
 		return nil, err
 	}
 
-	json.Unmarshal(linksJSON, &u.Links)
-	json.Unmarshal(privacyJSON, &u.PrivacySettings)
+	if err := json.Unmarshal(linksJSON, &u.Links); err != nil {
+		u.Links = []domain.Link{}
+	}
+	if err := json.Unmarshal(privacyJSON, &u.PrivacySettings); err != nil {
+		u.PrivacySettings = domain.PrivacySettings{}
+	}
 	return &u, nil
 }
 
 // UpdateNotificationSettings - UC-1.2.3
 func (r *UserRepo) UpdateNotificationSettings(ctx context.Context, userID int64, settings domain.NotificationSettings) error {
-	channelsJSON, _ := json.Marshal(settings.Channels)
-	_, err := r.db.Exec(ctx, `
+	channelsJSON, err := json.Marshal(settings.Channels)
+	if err != nil {
+		return err
+	}
+	_, err2 := r.db.Exec(ctx, `
 		INSERT INTO notification_settings (user_id, new_game, new_build, new_post, channels)
 		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (user_id) DO UPDATE SET
 			new_game = $2, new_build = $3, new_post = $4, channels = $5`,
 		userID, settings.NewGame, settings.NewBuild, settings.NewPost, channelsJSON)
-	return err
+	return err2
 }
 
 // GetNotificationSettings - UC-1.2.3
@@ -150,7 +167,9 @@ func (r *UserRepo) GetNotificationSettings(ctx context.Context, userID int64) (*
 		}, nil
 	}
 
-	json.Unmarshal(channelsJSON, &settings.Channels)
+	if err := json.Unmarshal(channelsJSON, &settings.Channels); err != nil {
+		settings.Channels = domain.Channels{InApp: true}
+	}
 	return &settings, nil
 }
 

@@ -8,8 +8,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/RESERPIX/hubigr/internal/captcha"
 	"github.com/RESERPIX/hubigr/internal/config"
 	"github.com/RESERPIX/hubigr/internal/email"
+	"github.com/RESERPIX/hubigr/internal/errors"
 	"github.com/RESERPIX/hubigr/internal/http"
 	"github.com/RESERPIX/hubigr/internal/logger"
 	"github.com/RESERPIX/hubigr/internal/ratelimit"
@@ -66,23 +68,15 @@ func main() {
 	// Инициализация avatar uploader
 	avatarUploader := upload.NewAvatarUploader(cfg.BaseURL)
 	
+	// Инициализация Turnstile
+	turnstile := captcha.NewTurnstileService(cfg.TurnstileSecret)
+	
 	// Инициализация handlers
-	handlers := http.NewHandlers(userRepo, limiter, emailSender, avatarUploader, cfg.JWTSecret)
+	handlers := http.NewHandlers(userRepo, limiter, emailSender, avatarUploader, cfg.JWTSecret, turnstile)
 
 	// Создание Fiber приложения
 	app := fiber.New(fiber.Config{
-		ErrorHandler: func(c *fiber.Ctx, err error) error {
-			code := fiber.StatusInternalServerError
-			if e, ok := err.(*fiber.Error); ok {
-				code = e.Code
-			}
-			return c.Status(code).JSON(fiber.Map{
-				"error": fiber.Map{
-					"code":    "internal_error",
-					"message": err.Error(),
-				},
-			})
-		},
+		ErrorHandler: errors.ErrorHandler,
 	})
 
 	// Настройка маршрутов

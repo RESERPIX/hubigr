@@ -4,6 +4,7 @@ import (
 	"mime/multipart"
 	"strings"
 
+	"github.com/RESERPIX/hubigr/internal/captcha"
 	"github.com/RESERPIX/hubigr/internal/domain"
 	"github.com/RESERPIX/hubigr/internal/logger"
 	"github.com/RESERPIX/hubigr/internal/ratelimit"
@@ -19,6 +20,7 @@ type Handlers struct {
 	emailSender    EmailSender
 	avatarUploader AvatarUploader
 	jwtSecret      string
+	turnstile      *captcha.TurnstileService
 }
 
 type AvatarUploader interface {
@@ -31,8 +33,8 @@ type EmailSender interface {
 	SendPasswordResetEmail(to, token string) error
 }
 
-func NewHandlers(userRepo *store.UserRepo, limiter *ratelimit.RedisLimiter, emailSender EmailSender, avatarUploader AvatarUploader, jwtSecret string) *Handlers {
-	return &Handlers{userRepo: userRepo, limiter: limiter, emailSender: emailSender, avatarUploader: avatarUploader, jwtSecret: jwtSecret}
+func NewHandlers(userRepo *store.UserRepo, limiter *ratelimit.RedisLimiter, emailSender EmailSender, avatarUploader AvatarUploader, jwtSecret string, turnstile *captcha.TurnstileService) *Handlers {
+	return &Handlers{userRepo: userRepo, limiter: limiter, emailSender: emailSender, avatarUploader: avatarUploader, jwtSecret: jwtSecret, turnstile: turnstile}
 }
 
 // SignUp - UC-1.1.1 из ТЗ
@@ -176,7 +178,10 @@ func (h *Handlers) Health(c *fiber.Ctx) error {
 
 // GetProfile - UC-1.2.2 из ТЗ
 func (h *Handlers) GetProfile(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(int64)
+	userID, ok := c.Locals("user_id").(int64)
+	if !ok {
+		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка получения ID пользователя"))
+	}
 
 	user, err := h.userRepo.GetByID(c.Context(), userID)
 	if err != nil {
@@ -191,7 +196,10 @@ func (h *Handlers) GetProfile(c *fiber.Ctx) error {
 
 // UpdateProfile - UC-1.2.1 из ТЗ
 func (h *Handlers) UpdateProfile(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(int64)
+	userID, ok := c.Locals("user_id").(int64)
+	if !ok {
+		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка получения ID пользователя"))
+	}
 
 	var req domain.UpdateProfileRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -212,7 +220,10 @@ func (h *Handlers) UpdateProfile(c *fiber.Ctx) error {
 
 // UpdateNotifications - UC-1.2.3 из ТЗ
 func (h *Handlers) UpdateNotifications(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(int64)
+	userID, ok := c.Locals("user_id").(int64)
+	if !ok {
+		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка получения ID пользователя"))
+	}
 
 	var settings domain.NotificationSettings
 	if err := c.BodyParser(&settings); err != nil {
@@ -229,7 +240,10 @@ func (h *Handlers) UpdateNotifications(c *fiber.Ctx) error {
 
 // GetNotifications - получение настроек уведомлений
 func (h *Handlers) GetNotifications(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(int64)
+	userID, ok := c.Locals("user_id").(int64)
+	if !ok {
+		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка получения ID пользователя"))
+	}
 
 	settings, err := h.userRepo.GetNotificationSettings(c.Context(), userID)
 	if err != nil {
@@ -344,7 +358,10 @@ func (h *Handlers) ResetPasswordConfirm(c *fiber.Ctx) error {
 
 // GetMySubmissions - UC-1.2.2 список сабмитов пользователя
 func (h *Handlers) GetMySubmissions(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(int64)
+	userID, ok := c.Locals("user_id").(int64)
+	if !ok {
+		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка получения ID пользователя"))
+	}
 
 	// Пагинация
 	page := c.QueryInt("page", 1)
@@ -365,7 +382,10 @@ func (h *Handlers) GetMySubmissions(c *fiber.Ctx) error {
 
 // UploadAvatar - UC-1.2.1 загрузка аватара
 func (h *Handlers) UploadAvatar(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(int64)
+	userID, ok := c.Locals("user_id").(int64)
+	if !ok {
+		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка получения ID пользователя"))
+	}
 
 	// Получение файла из формы
 	file, err := c.FormFile("avatar")

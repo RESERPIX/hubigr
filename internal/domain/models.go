@@ -59,11 +59,13 @@ type SignUpRequest struct {
 	ConfirmPassword string `json:"confirm_password"`
 	Nick            string `json:"nick"`
 	AgreeTerms      bool   `json:"agree_terms"`
+	CaptchaToken    string `json:"captcha_token"`
 }
 
 type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email        string `json:"email"`
+	Password     string `json:"password"`
+	CaptchaToken string `json:"captcha_token"`
 }
 
 type AuthResponse struct {
