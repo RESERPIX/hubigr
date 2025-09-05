@@ -3,6 +3,7 @@ package email
 import (
 	"fmt"
 	"net/smtp"
+	"strings"
 )
 
 type SMTPSender struct {
@@ -98,14 +99,40 @@ func NewMockSender() *MockSender {
 
 func (m *MockSender) SendVerificationEmail(to, token string) error {
 	m.SentEmails = append(m.SentEmails, SentEmail{To: to, Token: token})
-	fmt.Printf("MOCK EMAIL: Verification sent to %s with token %s\n", to, token)
+	fmt.Printf("MOCK EMAIL: Verification sent to %s with token %s\n", maskEmailForMock(to), maskToken(token))
 	return nil
 }
 
 func (m *MockSender) SendPasswordResetEmail(to, token string) error {
 	m.SentEmails = append(m.SentEmails, SentEmail{To: to, Token: token})
-	fmt.Printf("MOCK EMAIL: Password reset sent to %s with token %s\n", to, token)
+	fmt.Printf("MOCK EMAIL: Password reset sent to %s with token %s\n", maskEmailForMock(to), maskToken(token))
 	return nil
+}
+
+// maskEmailForMock маскирует email для mock sender
+func maskEmailForMock(email string) string {
+	if len(email) < 3 {
+		return "***"
+	}
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return "***@***"
+	}
+	local := parts[0]
+	domain := parts[1]
+	
+	if len(local) <= 2 {
+		return "***@" + domain
+	}
+	return local[:2] + "***@" + domain
+}
+
+// maskToken маскирует токен для безопасности
+func maskToken(token string) string {
+	if len(token) < 8 {
+		return "***"
+	}
+	return token[:4] + "***" + token[len(token)-4:]
 }
 
 // EmailSender интерфейс для отправки email

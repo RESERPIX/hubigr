@@ -23,7 +23,11 @@ import (
 
 func main() {
 	// Загрузка конфигурации
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		log.Printf("Failed to load config: %v", err)
+		os.Exit(1)
+	}
 	
 	// Инициализация логгера
 	logger.Init(cfg.LogLevel)
@@ -32,14 +36,15 @@ func main() {
 	// Подключение к базе данных
 	db, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
 	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
+		logger.Error("Failed to connect to database", "error", err)
+		os.Exit(1)
 	}
 	defer db.Close()
 
 	// Проверка подключения
 	if err := db.Ping(context.Background()); err != nil {
 		logger.Error("Failed to ping database", "error", err)
-		log.Fatal("Failed to ping database:", err)
+		os.Exit(1)
 	}
 	logger.Info("Database connected successfully")
 
@@ -50,7 +55,7 @@ func main() {
 	limiter, err := ratelimit.NewRedisLimiter(cfg.RedisURL)
 	if err != nil {
 		logger.Error("Failed to connect to Redis", "error", err)
-		log.Fatal("Failed to connect to Redis:", err)
+		os.Exit(1)
 	}
 	logger.Info("Redis connected successfully")
 

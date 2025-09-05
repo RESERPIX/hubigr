@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 )
 
@@ -19,12 +20,12 @@ type Config struct {
 	TurnstileSecret   string
 }
 
-func Load() *Config {
-	return &Config{
+func Load() (*Config, error) {
+	cfg := &Config{
 		Port:        getEnv("PORT", "8080"),
 		DatabaseURL: getEnv("DATABASE_URL", "postgres://user:pass@localhost/hubigr?sslmode=disable"),
 		RedisURL:    getEnv("REDIS_URL", "redis://localhost:6379"),
-		JWTSecret:   getEnv("JWT_SECRET", "your-secret-key"),
+		JWTSecret:   getEnv("JWT_SECRET", ""),
 		SMTPHost:    getEnv("SMTP_HOST", ""),
 		SMTPPort:    getEnv("SMTP_PORT", "587"),
 		SMTPUser:    getEnv("SMTP_USER", ""),
@@ -34,6 +35,13 @@ func Load() *Config {
 		LogLevel:        getEnv("LOG_LEVEL", "info"),
 		TurnstileSecret: getEnv("TURNSTILE_SECRET", ""),
 	}
+	
+	// Проверка критически важных настроек
+	if cfg.JWTSecret == "" || len(cfg.JWTSecret) < 32 {
+		return nil, fmt.Errorf("JWT_SECRET must be set and at least 32 characters long for security")
+	}
+	
+	return cfg, nil
 }
 
 func getEnv(key, defaultValue string) string {

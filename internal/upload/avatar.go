@@ -1,6 +1,7 @@
 package upload
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -33,18 +34,33 @@ func (u *AvatarUploader) UploadAvatar(userID int64, file *multipart.FileHeader) 
 		return "", fmt.Errorf("файл слишком большой, максимум 2 МБ")
 	}
 
-	// Проверка типа файла
-	contentType := file.Header.Get("Content-Type")
-	if !isValidImageType(contentType) {
-		return "", fmt.Errorf("неподдерживаемый формат файла, только JPEG/PNG")
-	}
-
-	// Открытие файла
+	// Открытие файла для проверки
 	src, err := file.Open()
 	if err != nil {
 		return "", err
 	}
 	defer src.Close()
+
+	// Проверка магических байтов (первые 512 байт)
+	buffer := make([]byte, 512)
+	n, err := src.Read(buffer)
+	if err != nil && err != io.EOF {
+		return "", fmt.Errorf("ошибка чтения файла: %v", err)
+	}
+	buffer = buffer[:n]
+
+	// Проверка на реальный тип файла
+	if !isValidImageByMagicBytes(buffer) {
+		return "", fmt.Errorf("файл не является изображением JPEG/PNG")
+	}
+
+	// Проверка на вредоносное содержимое
+	if containsMaliciousContent(buffer) {
+		return "", fmt.Errorf("файл содержит подозрительное содержимое")
+	}
+
+	// Возврат к началу файла
+	src.Seek(0, 0)
 
 	// Генерация безопасного имени файла
 	randomID, err := generateSecureFilename()
@@ -108,15 +124,57 @@ func (u *AvatarUploader) DeleteAvatar(avatarURL string) error {
 	return nil
 }
 
-// Оптимизированная проверка типа файла
-var validImageTypes = map[string]bool{
-	"image/jpeg": true,
-	"image/jpg":  true,
-	"image/png":  true,
+// Магические байты для проверки типов файлов
+var (
+	jpegMagic1 = []byte{0xFF, 0xD8, 0xFF}
+	jpegMagic2 = []byte{0xFF, 0xD8, 0xFF, 0xE0}
+	jpegMagic3 = []byte{0xFF, 0xD8, 0xFF, 0xE1}
+	pngMagic   = []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+)
+
+// isValidImageByMagicBytes проверяет файл по магическим байтам
+func isValidImageByMagicBytes(data []byte) bool {
+	if len(data) < 8 {
+		return false
+	}
+
+	// Проверка PNG
+	if bytes.HasPrefix(data, pngMagic) {
+		return true
+	}
+
+	// Проверка JPEG (несколько вариантов)
+	if bytes.HasPrefix(data, jpegMagic1) || 
+	   bytes.HasPrefix(data, jpegMagic2) || 
+	   bytes.HasPrefix(data, jpegMagic3) {
+		return true
+	}
+
+	return false
 }
 
-func isValidImageType(contentType string) bool {
-	return validImageTypes[contentType]
+// containsMaliciousContent проверяет на подозрительное содержимое
+func containsMaliciousContent(data []byte) bool {
+	// Список подозрительных строк
+	maliciousPatterns := []string{
+		"<?php",
+		"<script",
+		"javascript:",
+		"eval(",
+		"exec(",
+		"system(",
+		"shell_exec(",
+		"passthru(",
+		"base64_decode(",
+	}
+
+	dataStr := strings.ToLower(string(data))
+	for _, pattern := range maliciousPatterns {
+		if strings.Contains(dataStr, pattern) {
+			return true
+		}
+	}
+	return false
 }
 
 // generateSecureFilename - генерация безопасного имени файла

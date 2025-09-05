@@ -14,6 +14,21 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+// maskEmail маскирует email для безопасного логирования
+func maskEmail(email string) string {
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return "***@***"
+	}
+	local := parts[0]
+	domain := parts[1]
+	
+	if len(local) <= 2 {
+		return "***@" + domain
+	}
+	return local[:2] + "***@" + domain
+}
+
 type Handlers struct {
 	userRepo       *store.UserRepo
 	limiter        *ratelimit.RedisLimiter
@@ -65,14 +80,17 @@ func (h *Handlers) SignUp(c *fiber.Ctx) error {
 	}
 
 	// Создание токена подтверждения (TTL 1 час)
-	token := security.GenerateToken()
+	token, err := security.GenerateToken()
+	if err != nil {
+		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка генерации токена"))
+	}
 	if err := h.userRepo.CreateVerifyToken(c.Context(), userID, token); err != nil {
 		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка создания токена"))
 	}
 
 	// Отправка email с подтверждением
 	if err := h.emailSender.SendVerificationEmail(req.Email, token); err != nil {
-		logger.Error("Failed to send verification email", "error", err, "email", req.Email)
+		logger.Error("Failed to send verification email", "error", err, "email", maskEmail(req.Email))
 	}
 
 	return c.JSON(fiber.Map{
@@ -275,14 +293,17 @@ func (h *Handlers) ResendVerification(c *fiber.Ctx) error {
 	}
 
 	// Создание нового токена
-	token := security.GenerateToken()
+	token, err := security.GenerateToken()
+	if err != nil {
+		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка генерации токена"))
+	}
 	if err := h.userRepo.CreateVerifyToken(c.Context(), user.ID, token); err != nil {
 		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка создания токена"))
 	}
 
 	// Отправка email
 	if err := h.emailSender.SendVerificationEmail(req.Email, token); err != nil {
-		logger.Error("Failed to send verification email", "error", err, "email", req.Email)
+		logger.Error("Failed to send verification email", "error", err, "email", maskEmail(req.Email))
 	}
 
 	return c.JSON(fiber.Map{"message": "Новая ссылка отправлена на email"})
@@ -305,14 +326,17 @@ func (h *Handlers) ResetPasswordRequest(c *fiber.Ctx) error {
 	}
 
 	// Создание токена сброса (TTL 1 час)
-	token := security.GenerateToken()
+	token, err := security.GenerateToken()
+	if err != nil {
+		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка генерации токена"))
+	}
 	if err := h.userRepo.CreateResetToken(c.Context(), user.ID, token); err != nil {
 		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка создания токена"))
 	}
 
 	// Отправка email
 	if err := h.emailSender.SendPasswordResetEmail(req.Email, token); err != nil {
-		logger.Error("Failed to send reset email", "error", err, "email", req.Email)
+		logger.Error("Failed to send reset email", "error", err, "email", maskEmail(req.Email))
 	}
 
 	return c.JSON(fiber.Map{"message": "Мы отправили ссылку на email"})
