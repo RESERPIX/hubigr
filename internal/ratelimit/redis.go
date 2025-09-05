@@ -18,41 +18,60 @@ func NewRedisLimiter(redisURL string) (*RedisLimiter, error) {
 		return nil, err
 	}
 	
+	// Настройка connection pool для предотвращения memory leaks
+	opts.PoolSize = 10                    // Максимальное количество соединений
+	opts.MinIdleConns = 2                 // Минимум idle соединений
+	opts.MaxIdleConns = 5                 // Максимум idle соединений
+	opts.ConnMaxLifetime = 30 * time.Minute // Максимальное время жизни соединения
+	opts.ConnMaxIdleTime = 5 * time.Minute  // Максимальное время idle
+	opts.PoolTimeout = 4 * time.Second      // Таймаут получения соединения
+	opts.ReadTimeout = 3 * time.Second      // Таймаут чтения
+	opts.WriteTimeout = 3 * time.Second     // Таймаут записи
+	
 	client := redis.NewClient(opts)
-	if err := client.Ping(context.Background()).Err(); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.Ping(ctx).Err(); err != nil {
 		return nil, err
 	}
 	
 	return &RedisLimiter{client: client}, nil
 }
 
+// Lua скрипт для атомарного rate limiting
+var rateLimitScript = `
+local key = KEYS[1]
+local limit = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+
+local current = redis.call('GET', key)
+if current == false then
+    redis.call('SET', key, 1, 'EX', window)
+    return 1
+end
+
+current = tonumber(current)
+if current >= limit then
+    return 0
+end
+
+local new_count = redis.call('INCR', key)
+return new_count <= limit and 1 or 0
+`
+
 // Allow проверяет лимит согласно ТЗ: 5 попыток входа/мин
 func (r *RedisLimiter) Allow(ctx context.Context, key string, limit int, window time.Duration) (bool, error) {
-	// Проверяем текущий счетчик
-	current, err := r.client.Get(ctx, key).Int64()
-	if err == redis.Nil {
-		// Первый запрос - создаем ключ с TTL
-		pipe := r.client.Pipeline()
-		pipe.Set(ctx, key, 1, window)
-		_, err := pipe.Exec(ctx)
-		return err == nil, err
-	}
+	result, err := r.client.Eval(ctx, rateLimitScript, []string{key}, limit, int(window.Seconds())).Result()
 	if err != nil {
 		return false, err
 	}
 	
-	// Проверяем лимит
-	if current >= int64(limit) {
-		return false, nil
+	allowed, ok := result.(int64)
+	if !ok {
+		return false, fmt.Errorf("unexpected script result")
 	}
 	
-	// Увеличиваем счетчик БЕЗ сброса TTL
-	newCount, err := r.client.Incr(ctx, key).Result()
-	if err != nil {
-		return false, err
-	}
-	
-	return newCount <= int64(limit), nil
+	return allowed == 1, nil
 }
 
 // GetRemaining возвращает оставшиеся попытки
@@ -85,4 +104,14 @@ func LoginKey(ip string) string {
 // Ping - проверка соединения с Redis
 func (r *RedisLimiter) Ping(ctx context.Context) error {
 	return r.client.Ping(ctx).Err()
+}
+
+// Close закрывает соединение с Redis
+func (r *RedisLimiter) Close() error {
+	return r.client.Close()
+}
+
+// GetClient возвращает Redis клиент для мониторинга
+func (r *RedisLimiter) GetClient() *redis.Client {
+	return r.client
 }

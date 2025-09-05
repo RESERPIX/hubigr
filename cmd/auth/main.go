@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,6 +13,7 @@ import (
 	"github.com/RESERPIX/hubigr/internal/errors"
 	"github.com/RESERPIX/hubigr/internal/http"
 	"github.com/RESERPIX/hubigr/internal/logger"
+	"github.com/RESERPIX/hubigr/internal/monitoring"
 	"github.com/RESERPIX/hubigr/internal/ratelimit"
 	"github.com/RESERPIX/hubigr/internal/store"
 	"github.com/RESERPIX/hubigr/internal/upload"
@@ -25,7 +25,8 @@ func main() {
 	// Загрузка конфигурации
 	cfg, err := config.Load()
 	if err != nil {
-		log.Printf("Failed to load config: %v", err)
+		// Логгер еще не инициализирован, используем stderr
+		os.Stderr.WriteString("Failed to load config: " + err.Error() + "\n")
 		os.Exit(1)
 	}
 	
@@ -40,12 +41,13 @@ func main() {
 		os.Exit(1)
 	}
 	
-	// Настройка pool параметров
-	poolConfig.MaxConns = 25                // Максимум подключений
-	poolConfig.MinConns = 5                 // Минимум подключений
-	poolConfig.MaxConnLifetime = time.Hour  // Время жизни подключения
-	poolConfig.MaxConnIdleTime = time.Minute * 30 // Время простоя
-	poolConfig.HealthCheckPeriod = time.Minute * 5 // Проверка здоровья
+	// Настройка pool параметров для предотвращения memory leaks
+	poolConfig.MaxConns = 10                // Уменьшаем для экономии памяти
+	poolConfig.MinConns = 2                 // Минимум активных подключений
+	poolConfig.MaxConnLifetime = time.Minute * 30  // Короткое время жизни
+	poolConfig.MaxConnIdleTime = time.Minute * 5   // Быстрое закрытие idle
+	poolConfig.HealthCheckPeriod = time.Minute     // Частые проверки
+	poolConfig.MaxConnLifetimeJitter = time.Minute * 5 // Jitter для равномерного обновления
 	
 	// Подключение к базе данных
 	db, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
@@ -64,6 +66,7 @@ func main() {
 
 	// Инициализация репозиториев
 	userRepo := store.NewUserRepo(db)
+	refreshRepo := store.NewRefreshTokenRepo(db)
 
 	// Инициализация Redis rate limiter
 	limiter, err := ratelimit.NewRedisLimiter(cfg.RedisURL)
@@ -90,8 +93,12 @@ func main() {
 	// Инициализация Turnstile
 	turnstile := captcha.NewTurnstileService(cfg.TurnstileSecret)
 	
+	// Инициализация мониторинга connection pools
+	poolMonitor := monitoring.NewPoolMonitor(db, limiter.GetClient(), 30*time.Second)
+	go poolMonitor.Start(context.Background())
+	
 	// Инициализация handlers
-	handlers := http.NewHandlers(userRepo, limiter, emailSender, avatarUploader, cfg.JWTSecret, turnstile)
+	handlers := http.NewHandlers(userRepo, refreshRepo, limiter, emailSender, avatarUploader, cfg.JWTSecret, turnstile, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
 
 	// Создание Fiber приложения
 	app := fiber.New(fiber.Config{
@@ -107,15 +114,45 @@ func main() {
 
 	go func() {
 		<-c
-		log.Println("Gracefully shutting down...")
+		logger.Info("Gracefully shutting down...")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+		
+		// Останавливаем мониторинг pools
+		poolMonitor.Stop()
+		
+		// Закрываем Redis соединение
+		if err := limiter.Close(); err != nil {
+			logger.Error("Failed to close Redis connection", "error", err)
+		}
+		
+		// Закрываем базу данных с принудительным таймаутом
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		
+		// Запускаем закрытие БД в горутине для контроля таймаута
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			db.Close()
+		}()
+		
+		// Ждем завершения или таймаута
+		select {
+		case <-done:
+			logger.Info("Database connections closed gracefully")
+		case <-shutdownCtx.Done():
+			logger.Warn("Database shutdown timeout - forcing close")
+			// БД уже закрывается в горутине, просто логируем
+		}
+		
+		// Закрываем HTTP сервер
 		_ = app.ShutdownWithContext(ctx)
 	}()
 
 	// Запуск сервера
-	log.Printf("Server starting on port %s", cfg.Port)
+	logger.Info("Server starting", "port", cfg.Port)
 	if err := app.Listen(":" + cfg.Port); err != nil {
-		log.Printf("Server stopped: %v", err)
+		logger.Info("Server stopped", "error", err)
 	}
 }

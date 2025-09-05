@@ -20,11 +20,15 @@ import (
 
 type Handlers struct {
 	userRepo       *store.UserRepo
+	refreshRepo    *store.RefreshTokenRepo
 	limiter        *ratelimit.RedisLimiter
 	emailSender    EmailSender
 	avatarUploader AvatarUploader
 	jwtSecret      string
 	turnstile      *captcha.TurnstileService
+	// TTL Policies
+	accessTokenTTL  int
+	refreshTokenTTL int
 }
 
 type AvatarUploader interface {
@@ -37,8 +41,8 @@ type EmailSender interface {
 	SendPasswordResetEmail(to, token string) error
 }
 
-func NewHandlers(userRepo *store.UserRepo, limiter *ratelimit.RedisLimiter, emailSender EmailSender, avatarUploader AvatarUploader, jwtSecret string, turnstile *captcha.TurnstileService) *Handlers {
-	return &Handlers{userRepo: userRepo, limiter: limiter, emailSender: emailSender, avatarUploader: avatarUploader, jwtSecret: jwtSecret, turnstile: turnstile}
+func NewHandlers(userRepo *store.UserRepo, refreshRepo *store.RefreshTokenRepo, limiter *ratelimit.RedisLimiter, emailSender EmailSender, avatarUploader AvatarUploader, jwtSecret string, turnstile *captcha.TurnstileService, accessTTL, refreshTTL int) *Handlers {
+	return &Handlers{userRepo: userRepo, refreshRepo: refreshRepo, limiter: limiter, emailSender: emailSender, avatarUploader: avatarUploader, jwtSecret: jwtSecret, turnstile: turnstile, accessTokenTTL: accessTTL, refreshTokenTTL: refreshTTL}
 }
 
 // SignUp - UC-1.1.1 из ТЗ
@@ -123,10 +127,18 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 		return c.Status(401).JSON(domain.NewError("email_not_verified", "Подтвердите email для входа"))
 	}
 
-	// Генерация JWT
-	token, err := security.SignJWT(user.ID, string(user.Role), user.Nick, h.jwtSecret)
+	// Генерация access token
+	accessToken, err := security.SignJWT(user.ID, string(user.Role), user.Nick, h.jwtSecret, h.accessTokenTTL)
 	if err != nil {
 		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка создания токена"))
+	}
+
+	// Создание refresh token
+	deviceInfo := c.Get("User-Agent")
+	ipAddress := c.IP()
+	refreshToken, err := h.refreshRepo.Create(c.Context(), user.ID, deviceInfo, ipAddress, h.refreshTokenTTL)
+	if err != nil {
+		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка создания refresh токена"))
 	}
 
 	// Очистка хеша пароля из ответа
@@ -136,8 +148,9 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 	metrics.IncrementLoginAttempt(true)
 
 	return c.JSON(domain.AuthResponse{
-		User:  *user,
-		Token: token,
+		User:         *user,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
 	})
 }
 
@@ -160,41 +173,97 @@ func (h *Handlers) VerifyEmail(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "Email успешно подтвержден"})
 }
 
-// Logout - UC-1.1.4 из ТЗ (stateless JWT)
+// Logout - UC-1.1.4 отзыв всех refresh токенов
 func (h *Handlers) Logout(c *fiber.Ctx) error {
+	userID, ok := c.Locals("user_id").(int64)
+	if ok {
+		h.refreshRepo.RevokeUserTokens(c.Context(), userID)
+	}
 	return c.JSON(fiber.Map{"message": "Вы успешно вышли из системы"})
 }
 
 // Health - проверка здоровья сервиса
 func (h *Handlers) Health(c *fiber.Ctx) error {
+	ctx := c.Context()
+	status := "healthy"
+	statusCode := 200
+	
 	// Проверка БД
-	if err := h.userRepo.Ping(c.Context()); err != nil {
-		return c.Status(503).JSON(fiber.Map{
-			"status": "unhealthy",
-			"database": "down",
-			"error": err.Error(),
-		})
+	dbErr := h.userRepo.Ping(ctx)
+	if dbErr != nil {
+		status = "unhealthy"
+		statusCode = 503
 	}
 
 	// Проверка Redis
-	if err := h.limiter.Ping(c.Context()); err != nil {
-		return c.Status(503).JSON(fiber.Map{
-			"status": "unhealthy",
-			"redis": "down",
-			"error": err.Error(),
-		})
+	redisErr := h.limiter.Ping(ctx)
+	if redisErr != nil {
+		status = "unhealthy"
+		statusCode = 503
 	}
 
-	// Статистика connection pool
-	poolStats := h.userRepo.GetPoolStats()
+	// Проверка метрик
+	m := metrics.GetMetrics()
+	snapshot := m.GetSnapshot()
+	
+	// Получаем статистику connection pools
+	dbPoolStats := h.userRepo.GetPoolStats()
+	redisPoolStats := h.limiter.GetClient().PoolStats()
+	
+	// Простые алерты
+	alerts := []string{}
+	if failedLogins, ok := snapshot["failed_logins"].(int64); ok && failedLogins > 10 {
+		alerts = append(alerts, "High failed login rate")
+	}
+	
+	// Проверяем connection pools на проблемы
+	if acquiredConns, ok := dbPoolStats["acquired_conns"].(int32); ok {
+		if maxConns, ok := dbPoolStats["max_conns"].(int32); ok {
+			if float64(acquiredConns)/float64(maxConns) > 0.8 {
+				alerts = append(alerts, "DB connection pool usage high")
+			}
+		}
+	}
+	
+	if redisPoolStats.Timeouts > 0 {
+		alerts = append(alerts, "Redis connection timeouts detected")
+	}
+	
+	if len(alerts) > 0 {
+		status = "degraded"
+	}
 
-	return c.JSON(fiber.Map{
-		"status": "healthy",
-		"database": "up",
-		"redis": "up",
-		"version": "1.0.0",
-		"pool_stats": poolStats,
-	})
+	response := fiber.Map{
+		"status":   status,
+		"database": map[string]interface{}{"status": "up", "error": dbErr, "pool_stats": dbPoolStats},
+		"redis":    map[string]interface{}{"status": "up", "error": redisErr, "pool_stats": map[string]interface{}{
+			"hits":        redisPoolStats.Hits,
+			"misses":      redisPoolStats.Misses,
+			"timeouts":    redisPoolStats.Timeouts,
+			"total_conns": redisPoolStats.TotalConns,
+			"idle_conns":  redisPoolStats.IdleConns,
+			"stale_conns": redisPoolStats.StaleConns,
+		}},
+		"version":  "1.0.0",
+		"alerts":   alerts,
+		"metrics":  snapshot,
+	}
+	
+	if dbErr != nil {
+		response["database"] = map[string]interface{}{"status": "down", "error": dbErr.Error(), "pool_stats": dbPoolStats}
+	}
+	if redisErr != nil {
+		response["redis"] = map[string]interface{}{"status": "down", "error": redisErr.Error(), "pool_stats": map[string]interface{}{
+			"hits":        redisPoolStats.Hits,
+			"misses":      redisPoolStats.Misses,
+			"timeouts":    redisPoolStats.Timeouts,
+			"total_conns": redisPoolStats.TotalConns,
+			"idle_conns":  redisPoolStats.IdleConns,
+			"stale_conns": redisPoolStats.StaleConns,
+		}}
+	}
+
+	return c.Status(statusCode).JSON(response)
 }
 
 // Metrics - эндпоинт для метрик
@@ -383,7 +452,7 @@ func (h *Handlers) ResetPasswordConfirm(c *fiber.Ctx) error {
 	}
 
 	// Сброс пароля и всех сессий
-	success, err := h.userRepo.ResetPassword(c.Context(), req.Token, hash)
+	success, userID, err := h.userRepo.ResetPassword(c.Context(), req.Token, hash)
 	if err != nil {
 		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка сброса пароля"))
 	}
@@ -391,6 +460,9 @@ func (h *Handlers) ResetPasswordConfirm(c *fiber.Ctx) error {
 	if !success {
 		return c.Status(400).JSON(domain.NewError("invalid_token", "Токен недействителен или истек"))
 	}
+
+	// Отзываем все refresh токены при смене пароля
+	h.refreshRepo.RevokeUserTokens(c.Context(), userID)
 
 	return c.JSON(fiber.Map{"message": "Пароль успешно изменен"})
 }
@@ -469,5 +541,45 @@ func (h *Handlers) UploadAvatar(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"avatar_url": avatarURL,
 		"message":    "Аватар обновлен",
+	})
+}
+
+// RefreshToken обновляет access token через refresh token
+func (h *Handlers) RefreshToken(c *fiber.Ctx) error {
+	var req domain.RefreshRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(domain.NewError("bad_request", "Неверный формат данных"))
+	}
+
+	// Проверяем и обновляем refresh token
+	oldToken, newRefreshToken, err := h.refreshRepo.ValidateAndRotate(c.Context(), req.RefreshToken)
+	if err != nil {
+		return c.Status(401).JSON(domain.NewError("unauthorized", "Недействительный refresh token"))
+	}
+
+	// Получаем пользователя
+	user, err := h.userRepo.GetByID(c.Context(), oldToken.UserID)
+	if err != nil {
+		return c.Status(404).JSON(domain.NewError("not_found", "Пользователь не найден"))
+	}
+
+	// Проверяем что пользователь не заблокирован
+	if user.IsBanned {
+		return c.Status(403).JSON(domain.NewError("forbidden", "Аккаунт заблокирован"))
+	}
+
+	// Генерируем новый access token
+	accessToken, err := security.SignJWT(user.ID, string(user.Role), user.Nick, h.jwtSecret, h.accessTokenTTL)
+	if err != nil {
+		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка создания токена"))
+	}
+
+	// Очищаем хеш пароля
+	user.Hash = ""
+
+	return c.JSON(domain.AuthResponse{
+		User:         *user,
+		AccessToken:  accessToken,
+		RefreshToken: newRefreshToken,
 	})
 }

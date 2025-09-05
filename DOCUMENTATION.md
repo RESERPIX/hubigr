@@ -142,8 +142,8 @@ Content-Type: application/json
 
 {
   "email": "user@example.com",
-  "password": "password123",
-  "confirm_password": "password123", 
+  "password": "<your_password>",
+  "confirm_password": "<your_password>", 
   "nick": "username",
   "agree_terms": true
 }
@@ -164,7 +164,7 @@ Content-Type: application/json
 
 {
   "email": "user@example.com",
-  "password": "password123"
+  "password": "<your_password>"
 }
 ```
 
@@ -203,8 +203,8 @@ Content-Type: application/json
 
 {
   "token": "<reset_token>",
-  "password": "newpassword123",
-  "confirm_password": "newpassword123"
+  "password": "<new_password>",
+  "confirm_password": "<new_password>"
 }
 ```
 
@@ -406,8 +406,8 @@ curl -X POST http://localhost:8000/api/v1/auth/signup \
   -H "Content-Type: application/json" \
   -d '{
     "email": "test@example.com",
-    "password": "testpass123",
-    "confirm_password": "testpass123",
+    "password": "<your_password>",
+    "confirm_password": "<your_password>",
     "nick": "testuser",
     "agree_terms": true
   }'

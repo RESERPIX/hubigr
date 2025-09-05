@@ -7,6 +7,9 @@ import (
 	"strings"
 )
 
+// Прекомпилированный regex для эффективности
+var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+
 type SMTPSender struct {
 	host     string
 	port     string
@@ -165,7 +168,6 @@ func validateEmailInput(to, token string) error {
 	}
 	
 	// Простая проверка формата email
-	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 	if !emailRegex.MatchString(to) {
 		return fmt.Errorf("invalid email format")
 	}

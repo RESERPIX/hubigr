@@ -22,8 +22,8 @@ type AvatarUploader struct {
 }
 
 func NewAvatarUploader(baseURL string) *AvatarUploader {
-	// Создаем директорию с правами 0755 для веб-сервера
-	os.MkdirAll(UploadDir, 0755)
+	// Создаем директорию с безопасными правами (0700 - только владелец)
+	os.MkdirAll(UploadDir, 0700)
 	return &AvatarUploader{baseURL: baseURL}
 }
 
@@ -63,21 +63,26 @@ func (u *AvatarUploader) UploadAvatar(userID int64, file *multipart.FileHeader) 
 	
 	filename := fmt.Sprintf("%d_%s.jpg", userID, randomID)
 	
-	// Создаем абсолютный путь к upload директории
+	// Безопасное построение пути - используем только базовое имя файла
+	safeFilename := filepath.Base(filename)
 	absUploadDir, err := filepath.Abs(UploadDir)
 	if err != nil {
 		return "", fmt.Errorf("path resolution failed")
 	}
 	
-	// Создаем полный путь к файлу БЕЗ использования пользовательского ввода
-	filePath := filepath.Join(absUploadDir, filename)
+	// Строим путь только из безопасных компонентов
+	filePath := filepath.Join(absUploadDir, safeFilename)
+	absFilePath, err := filepath.Abs(filePath)
+	if err != nil {
+		return "", fmt.Errorf("path resolution failed")
+	}
 	
-	// Проверяем что результирующий путь находится в пределах upload директории
-	if !strings.HasPrefix(filePath, absUploadDir+string(filepath.Separator)) {
-		return "", fmt.Errorf("invalid path")
+	// Критическая проверка - файл должен быть строго внутри директории
+	if !strings.HasPrefix(absFilePath, absUploadDir+string(filepath.Separator)) {
+		return "", fmt.Errorf("path traversal detected")
 	}
 
-	dst, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	dst, err := os.OpenFile(absFilePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		return "", fmt.Errorf("file creation failed")
 	}
@@ -85,7 +90,7 @@ func (u *AvatarUploader) UploadAvatar(userID int64, file *multipart.FileHeader) 
 
 	_, err = io.Copy(dst, src)
 	if err != nil {
-		os.Remove(filePath)
+		os.Remove(absFilePath)
 		return "", fmt.Errorf("file write failed")
 	}
 
@@ -103,10 +108,11 @@ func (u *AvatarUploader) DeleteAvatar(avatarURL string) error {
 	if len(parts) == 0 {
 		return nil
 	}
-	filename := filepath.Base(parts[len(parts)-1])
+	// Используем только базовое имя файла для безопасности
+	safeFilename := filepath.Base(parts[len(parts)-1])
 	
 	// Проверяем что имя файла соответствует нашему формату
-	for _, r := range filename {
+	for _, r := range safeFilename {
 		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '.') {
 			return fmt.Errorf("invalid filename")
 		}
@@ -117,14 +123,18 @@ func (u *AvatarUploader) DeleteAvatar(avatarURL string) error {
 		return fmt.Errorf("path resolution failed")
 	}
 	
-	filePath := filepath.Join(absUploadDir, filename)
+	filePath := filepath.Join(absUploadDir, safeFilename)
+	absFilePath, err := filepath.Abs(filePath)
+	if err != nil {
+		return fmt.Errorf("path resolution failed")
+	}
 	
-	if !strings.HasPrefix(filePath, absUploadDir+string(filepath.Separator)) {
-		return fmt.Errorf("invalid path")
+	if !strings.HasPrefix(absFilePath, absUploadDir+string(filepath.Separator)) {
+		return fmt.Errorf("path traversal detected")
 	}
 
-	if _, err := os.Stat(filePath); err == nil {
-		return os.Remove(filePath)
+	if _, err := os.Stat(absFilePath); err == nil {
+		return os.Remove(absFilePath)
 	}
 	return nil
 }
@@ -158,24 +168,27 @@ func isValidImageByMagicBytes(data []byte) bool {
 	return false
 }
 
+// Прекомпилированные паттерны для эффективности
+var maliciousPatterns = [][]byte{
+	[]byte("<?php"),
+	[]byte("<script"),
+	[]byte("javascript:"),
+	[]byte("eval("),
+	[]byte("exec("),
+	[]byte("system("),
+	[]byte("shell_exec("),
+	[]byte("passthru("),
+	[]byte("base64_decode("),
+}
+
 // containsMaliciousContent проверяет на подозрительное содержимое
 func containsMaliciousContent(data []byte) bool {
-	// Список подозрительных строк
-	maliciousPatterns := []string{
-		"<?php",
-		"<script",
-		"javascript:",
-		"eval(",
-		"exec(",
-		"system(",
-		"shell_exec(",
-		"passthru(",
-		"base64_decode(",
-	}
-
-	dataStr := strings.ToLower(string(data))
+	// Преобразуем в lowercase только однажды
+	lowerData := bytes.ToLower(data)
+	
+	// Используем bytes.Contains вместо string conversion
 	for _, pattern := range maliciousPatterns {
-		if strings.Contains(dataStr, pattern) {
+		if bytes.Contains(lowerData, pattern) {
 			return true
 		}
 	}

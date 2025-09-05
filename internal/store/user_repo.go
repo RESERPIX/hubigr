@@ -179,25 +179,23 @@ func (r *UserRepo) CreateResetToken(ctx context.Context, userID int64, token str
 }
 
 // ResetPassword - UC-1.1.3 сброс пароля и всех сессий
-func (r *UserRepo) ResetPassword(ctx context.Context, token, newHash string) (bool, error) {
-	result, err := r.db.Exec(ctx, `
+func (r *UserRepo) ResetPassword(ctx context.Context, token, newHash string) (bool, int64, error) {
+	var userID int64
+	err := r.db.QueryRow(ctx, `
 		UPDATE users SET hash = $2
 		WHERE id = (
 			SELECT user_id FROM password_reset_tokens 
 			WHERE token = $1 AND expires_at > NOW()
-		)`, token, newHash)
+		)
+		RETURNING id`, token, newHash).Scan(&userID)
 
 	if err != nil {
-		return false, err
-	}
-
-	if result.RowsAffected() == 0 {
-		return false, nil
+		return false, 0, err
 	}
 
 	// Удаляем использованный токен
 	r.db.Exec(ctx, "DELETE FROM password_reset_tokens WHERE token = $1", token)
-	return true, nil
+	return true, userID, nil
 }
 
 // UserSubmission - сабмит пользователя для UC-1.2.2
@@ -237,7 +235,11 @@ func (r *UserRepo) GetUserSubmissions(ctx context.Context, userID int64, page, l
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			// Логируем ошибку закрытия, но не возвращаем её
+		}
+	}()
 
 	var submissions []UserSubmission
 	for rows.Next() {

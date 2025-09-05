@@ -1,0 +1,24 @@
+global:
+  scrape_interval: 15s
+
+rule_files:
+  - "alert_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+scrape_configs:
+  - job_name: 'hubigr-auth'
+    static_configs:
+      - targets: ['auth:8080']
+    metrics_path: '/api/v1/metrics/prometheus'
+    scrape_interval: 10s
+
+  - job_name: 'hubigr-health'
+    static_configs:
+      - targets: ['auth:8080']
+    metrics_path: '/api/v1/health'
+    scrape_interval: 30s

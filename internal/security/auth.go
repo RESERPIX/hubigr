@@ -26,13 +26,13 @@ func CheckPassword(hash, password string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
 }
 
-func SignJWT(userID int64, role, nick, secret string) (string, error) {
+func SignJWT(userID int64, role, nick, secret string, ttlMinutes int) (string, error) {
 	claims := Claims{
 		UserID: userID,
 		Role:   role,
 		Nick:   nick,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(ttlMinutes) * time.Minute)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
@@ -61,8 +61,27 @@ func VerifyJWT(tokenString, secret string) (*Claims, error) {
 func GenerateToken() (string, error) {
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
-		// Критическая ошибка криптографии
-		return "", fmt.Errorf("ошибка генерации случайных байт")
+		return "", fmt.Errorf("token generation failed")
 	}
 	return hex.EncodeToString(bytes), nil
+}
+
+// GenerateRefreshToken генерирует refresh token
+func GenerateRefreshToken() (string, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("refresh token generation failed")
+	}
+	return hex.EncodeToString(bytes), nil
+}
+
+// HashRefreshToken хеширует refresh token для хранения
+func HashRefreshToken(token string) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
+	return string(hash), err
+}
+
+// VerifyRefreshToken проверяет refresh token
+func VerifyRefreshToken(hash, token string) bool {
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(token)) == nil
 }

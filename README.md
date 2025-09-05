@@ -24,12 +24,13 @@
 
 ### Аутентификация
 - `POST /api/v1/auth/signup` - Регистрация (UC-1.1.1)
-- `POST /api/v1/auth/login` - Вход (UC-1.1.2)
+- `POST /api/v1/auth/login` - Вход (UC-1.1.2) + refresh token
+- `POST /api/v1/auth/refresh` - Обновление токенов с ротацией
 - `POST /api/v1/auth/verify-email` - Подтверждение email (UC-1.1.1)
 - `POST /api/v1/auth/resend-verification` - Повторная отправка письма
 - `POST /api/v1/auth/reset-password` - Запрос сброса пароля (UC-1.1.3)
 - `POST /api/v1/auth/reset-password/confirm` - Подтверждение сброса (UC-1.1.3)
-- `POST /api/v1/auth/logout` - Выход (UC-1.1.4)
+- `POST /api/v1/auth/logout` - Выход + отзыв токенов (UC-1.1.4)
 
 ### Профили
 - `GET /api/v1/profile` - Получить профиль (UC-1.2.2)
@@ -86,6 +87,8 @@ curl http://localhost:8000/api/v1/health
 
 - JWT токены с HS256
 - Bcrypt для паролей
+- **Refresh токены с ротацией** ✅
+- **TTL политики: access 5-15 мин, refresh 7-30 дней** ✅
 - **Rate limiting с Redis: 5 попыток входа/мин** ✅
 - **Email отправка для verification (SMTP + Mock)** ✅
 - **Восстановление пароля (UC-1.1.3)** ✅

@@ -87,8 +87,9 @@ type LoginRequest struct {
 }
 
 type AuthResponse struct {
-	User  User   `json:"user"`
-	Token string `json:"token"`
+	User         User   `json:"user"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 type UpdateProfileRequest struct {
@@ -104,6 +105,22 @@ type ErrorResponse struct {
 		Code    string `json:"code"`
 		Message string `json:"message"`
 	} `json:"error"`
+}
+
+// RefreshToken модель для refresh токенов
+type RefreshToken struct {
+	ID         int64      `json:"id"`
+	UserID     int64      `json:"user_id"`
+	TokenHash  string     `json:"-"`
+	ExpiresAt  time.Time  `json:"expires_at"`
+	CreatedAt  time.Time  `json:"created_at"`
+	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+	DeviceInfo *string    `json:"device_info,omitempty"`
+	IPAddress  *string    `json:"ip_address,omitempty"`
+}
+
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
 }
 
 func NewError(code, message string) ErrorResponse {

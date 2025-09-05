@@ -25,63 +25,79 @@ type Metrics struct {
 	LastRequestTime   time.Time
 }
 
-var globalMetrics = &Metrics{
-	RequestsTotal:   make(map[string]int64),
-	RequestDuration: make(map[string]time.Duration),
-	ResponseStatus:  make(map[int]int64),
-	StartTime:       time.Now(),
-}
+var (
+	globalMetrics *Metrics
+	metricsOnce   sync.Once
+)
 
 // GetMetrics возвращает текущие метрики
 func GetMetrics() *Metrics {
+	metricsOnce.Do(func() {
+		globalMetrics = &Metrics{
+			RequestsTotal:   make(map[string]int64),
+			RequestDuration: make(map[string]time.Duration),
+			ResponseStatus:  make(map[int]int64),
+			StartTime:       time.Now(),
+		}
+	})
 	return globalMetrics
 }
 
 // IncrementRequests увеличивает счетчик запросов
 func IncrementRequests(method string) {
-	globalMetrics.mu.Lock()
-	defer globalMetrics.mu.Unlock()
-	globalMetrics.RequestsTotal[method]++
-	globalMetrics.LastRequestTime = time.Now()
+	m := GetMetrics()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.RequestsTotal[method]++
+	m.LastRequestTime = time.Now()
 }
 
 // RecordDuration записывает длительность запроса
 func RecordDuration(method string, duration time.Duration) {
-	globalMetrics.mu.Lock()
-	defer globalMetrics.mu.Unlock()
-	// Простое скользящее среднее
-	current := globalMetrics.RequestDuration[method]
-	globalMetrics.RequestDuration[method] = (current + duration) / 2
+	m := GetMetrics()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// Экспоненциальное скользящее среднее (EMA)
+	if current, exists := m.RequestDuration[method]; exists {
+		// EMA: new_avg = alpha * new_value + (1 - alpha) * old_avg
+		m.RequestDuration[method] = time.Duration(0.1*float64(duration) + 0.9*float64(current))
+	} else {
+		m.RequestDuration[method] = duration
+	}
 }
 
 // IncrementStatus увеличивает счетчик статус кодов
 func IncrementStatus(status int) {
-	globalMetrics.mu.Lock()
-	defer globalMetrics.mu.Unlock()
-	globalMetrics.ResponseStatus[status]++
+	m := GetMetrics()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.ResponseStatus[status]++
 }
 
 // IncrementUserRegistered увеличивает счетчик регистраций
 func IncrementUserRegistered() {
-	globalMetrics.mu.Lock()
-	defer globalMetrics.mu.Unlock()
-	globalMetrics.UsersRegistered++
+	m := GetMetrics()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.UsersRegistered++
 }
 
 // IncrementEmailSent увеличивает счетчик отправленных email
 func IncrementEmailSent() {
-	globalMetrics.mu.Lock()
-	defer globalMetrics.mu.Unlock()
-	globalMetrics.EmailsSent++
+	m := GetMetrics()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.EmailsSent++
 }
 
 // IncrementLoginAttempt увеличивает счетчик попыток входа
 func IncrementLoginAttempt(success bool) {
-	globalMetrics.mu.Lock()
-	defer globalMetrics.mu.Unlock()
-	globalMetrics.LoginAttempts++
+	m := GetMetrics()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.LoginAttempts++
 	if !success {
-		globalMetrics.FailedLogins++
+		m.FailedLogins++
 	}
 }
 

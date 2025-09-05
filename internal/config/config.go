@@ -19,6 +19,9 @@ type Config struct {
 	LogLevel          string
 	TurnstileSecret   string
 	CORSOrigins       string
+	// TTL Policies - Политики времени жизни токенов
+	AccessTokenTTL    int // Access token TTL в минутах (5-15 мин)
+	RefreshTokenTTL   int // Refresh token TTL в днях (7-30 дней)
 }
 
 func Load() (*Config, error) {
@@ -36,6 +39,9 @@ func Load() (*Config, error) {
 		LogLevel:        getEnv("LOG_LEVEL", "info"),
 		TurnstileSecret: getEnv("TURNSTILE_SECRET", ""),
 		CORSOrigins:     getEnv("CORS_ORIGINS", "http://localhost:3000"),
+		// TTL Policies
+		AccessTokenTTL:  getEnvInt("ACCESS_TOKEN_TTL", 15),  // 15 минут по умолчанию
+		RefreshTokenTTL: getEnvInt("REFRESH_TOKEN_TTL", 7),  // 7 дней по умолчанию
 	}
 	
 	// Проверка критически важных настроек только в продакшене
@@ -51,12 +57,29 @@ func Load() (*Config, error) {
 		}
 	}
 	
+	// Валидация TTL политик
+	if cfg.AccessTokenTTL < 5 || cfg.AccessTokenTTL > 15 {
+		return nil, fmt.Errorf("ACCESS_TOKEN_TTL must be between 5-15 minutes")
+	}
+	if cfg.RefreshTokenTTL < 7 || cfg.RefreshTokenTTL > 30 {
+		return nil, fmt.Errorf("REFRESH_TOKEN_TTL must be between 7-30 days")
+	}
+	
 	return cfg, nil
 }
 
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
+	}
+	return defaultValue
+}
+
+func getEnvInt(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if intVal, err := fmt.Sscanf(value, "%d", &defaultValue); err == nil && intVal == 1 {
+			return defaultValue
+		}
 	}
 	return defaultValue
 }

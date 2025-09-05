@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/RESERPIX/hubigr/internal/domain"
 	"github.com/gofiber/fiber/v2"
@@ -14,6 +15,23 @@ const (
 	MaxFileSize = 10 << 20 // 10 MB
 )
 
+// Превычисленный абсолютный путь для эффективности
+var (
+	absUploadsDir string
+	uploadsDirOnce sync.Once
+)
+
+func getAbsUploadsDir() string {
+	uploadsDirOnce.Do(func() {
+		var err error
+		absUploadsDir, err = filepath.Abs(UploadsDir)
+		if err != nil {
+			panic("Failed to resolve uploads directory: " + err.Error())
+		}
+	})
+	return absUploadsDir
+}
+
 // SecureStaticHandler безопасно обслуживает статические файлы
 func SecureStaticHandler(c *fiber.Ctx) error {
 	requestedPath := c.Params("*")
@@ -21,33 +39,30 @@ func SecureStaticHandler(c *fiber.Ctx) error {
 		return c.Status(404).JSON(domain.NewError("not_found", "File not found"))
 	}
 
-	// Строгая валидация - только алфавитно-цифровые символы и слеши
-	for _, r := range requestedPath {
-		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '.' || r == '/' || r == '-') {
-			return c.Status(403).JSON(domain.NewError("forbidden", "Invalid path"))
+	// Безопасное извлечение имени файла - используем только базовое имя
+	safeFilename := filepath.Base(requestedPath)
+	
+	// Строгая валидация имени файла
+	for _, r := range safeFilename {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '.' || r == '-') {
+			return c.Status(403).JSON(domain.NewError("forbidden", "Invalid filename"))
 		}
 	}
 
-	// Проверка на path traversal
-	if strings.Contains(requestedPath, "..") {
-		return c.Status(403).JSON(domain.NewError("forbidden", "Path traversal detected"))
-	}
-
-	// Получаем абсолютный путь к uploads директории
-	absUploadsDir, err := filepath.Abs(UploadsDir)
+	// Создаем полный путь только из безопасных компонентов
+	absUploadsDir := getAbsUploadsDir()
+	fullPath := filepath.Join(absUploadsDir, "avatars", safeFilename)
+	absFullPath, err := filepath.Abs(fullPath)
 	if err != nil {
 		return c.Status(500).JSON(domain.NewError("internal_error", "Server error"))
 	}
 	
-	// Создаем полный путь
-	fullPath := filepath.Join(absUploadsDir, requestedPath)
-	
 	// Критическая проверка - файл должен быть строго внутри uploads
-	if !strings.HasPrefix(fullPath, absUploadsDir+string(filepath.Separator)) {
-		return c.Status(403).JSON(domain.NewError("forbidden", "Access denied"))
+	if !strings.HasPrefix(absFullPath, absUploadsDir+string(filepath.Separator)) {
+		return c.Status(403).JSON(domain.NewError("forbidden", "Path traversal detected"))
 	}
 
-	fileInfo, err := os.Stat(fullPath)
+	fileInfo, err := os.Stat(absFullPath)
 	if os.IsNotExist(err) {
 		return c.Status(404).JSON(domain.NewError("not_found", "File not found"))
 	}
@@ -79,5 +94,5 @@ func SecureStaticHandler(c *fiber.Ctx) error {
 	}
 
 	// Отправка файла
-	return c.SendFile(fullPath)
+	return c.SendFile(absFullPath)
 }
