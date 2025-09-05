@@ -1,11 +1,11 @@
 package http
 
 import (
-	"fmt"
 	"mime/multipart"
 	"strings"
 
 	"github.com/RESERPIX/hubigr/internal/domain"
+	"github.com/RESERPIX/hubigr/internal/logger"
 	"github.com/RESERPIX/hubigr/internal/ratelimit"
 	"github.com/RESERPIX/hubigr/internal/security"
 	"github.com/RESERPIX/hubigr/internal/store"
@@ -70,9 +70,7 @@ func (h *Handlers) SignUp(c *fiber.Ctx) error {
 
 	// Отправка email с подтверждением
 	if err := h.emailSender.SendVerificationEmail(req.Email, token); err != nil {
-		// Логируем ошибку, но не прерываем процесс регистрации
-		// В продакшене можно добавить retry логику
-		fmt.Printf("Failed to send verification email: %v\n", err)
+		logger.Error("Failed to send verification email", "error", err, "email", req.Email)
 	}
 
 	return c.JSON(fiber.Map{
@@ -146,6 +144,34 @@ func (h *Handlers) VerifyEmail(c *fiber.Ctx) error {
 // Logout - UC-1.1.4 из ТЗ (stateless JWT)
 func (h *Handlers) Logout(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "Вы успешно вышли из системы"})
+}
+
+// Health - проверка здоровья сервиса
+func (h *Handlers) Health(c *fiber.Ctx) error {
+	// Проверка БД
+	if err := h.userRepo.Ping(c.Context()); err != nil {
+		return c.Status(503).JSON(fiber.Map{
+			"status": "unhealthy",
+			"database": "down",
+			"error": err.Error(),
+		})
+	}
+
+	// Проверка Redis
+	if err := h.limiter.Ping(c.Context()); err != nil {
+		return c.Status(503).JSON(fiber.Map{
+			"status": "unhealthy",
+			"redis": "down",
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status": "healthy",
+		"database": "up",
+		"redis": "up",
+		"version": "1.0.0",
+	})
 }
 
 // GetProfile - UC-1.2.2 из ТЗ
@@ -242,7 +268,7 @@ func (h *Handlers) ResendVerification(c *fiber.Ctx) error {
 
 	// Отправка email
 	if err := h.emailSender.SendVerificationEmail(req.Email, token); err != nil {
-		fmt.Printf("Failed to send verification email: %v\n", err)
+		logger.Error("Failed to send verification email", "error", err, "email", req.Email)
 	}
 
 	return c.JSON(fiber.Map{"message": "Новая ссылка отправлена на email"})
@@ -272,7 +298,7 @@ func (h *Handlers) ResetPasswordRequest(c *fiber.Ctx) error {
 
 	// Отправка email
 	if err := h.emailSender.SendPasswordResetEmail(req.Email, token); err != nil {
-		fmt.Printf("Failed to send reset email: %v\n", err)
+		logger.Error("Failed to send reset email", "error", err, "email", req.Email)
 	}
 
 	return c.JSON(fiber.Map{"message": "Мы отправили ссылку на email"})

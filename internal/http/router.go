@@ -33,7 +33,7 @@ func SetupRoutes(app *fiber.App, handlers *Handlers, jwtSecret string) {
 	auth.Post("/reset-password/confirm", handlers.ResetPasswordConfirm)
 
 	// Profile routes (API-4.6 - API-4.8 из ТЗ)
-	profile := api.Group("/profile", AuthMiddleware(jwtSecret))
+	profile := api.Group("/profile", AuthMiddleware(jwtSecret), LoggingMiddleware())
 	profile.Get("/", handlers.GetProfile)
 	profile.Put("/", handlers.UpdateProfile)
 	profile.Get("/notifications", handlers.GetNotifications)
@@ -49,7 +49,5 @@ func SetupRoutes(app *fiber.App, handlers *Handlers, jwtSecret string) {
 	_ = admin // Пока не используется
 
 	// Health check
-	api.Get("/health", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"status": "ok"})
-	})
+	api.Get("/health", handlers.Health)
 }

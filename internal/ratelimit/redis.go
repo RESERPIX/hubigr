@@ -70,3 +70,8 @@ func (r *RedisLimiter) GetTTL(ctx context.Context, key string) (time.Duration, e
 func LoginKey(ip string) string {
 	return fmt.Sprintf("login:%s", ip)
 }
+
+// Ping - проверка соединения с Redis
+func (r *RedisLimiter) Ping(ctx context.Context) error {
+	return r.client.Ping(ctx).Err()
+}

@@ -244,6 +244,11 @@ func (r *UserRepo) GetUserSubmissions(ctx context.Context, userID int64, page, l
 	return submissions, total, nil
 }
 
+// Ping - проверка соединения с БД
+func (r *UserRepo) Ping(ctx context.Context) error {
+	return r.db.Ping(ctx)
+}
+
 // UpdateAvatar - обновление аватара пользователя
 func (r *UserRepo) UpdateAvatar(ctx context.Context, userID int64, avatarURL string) error {
 	_, err := r.db.Exec(ctx, `UPDATE users SET avatar = $2 WHERE id = $1`, userID, avatarURL)

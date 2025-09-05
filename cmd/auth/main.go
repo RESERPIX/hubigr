@@ -11,6 +11,7 @@ import (
 	"github.com/RESERPIX/hubigr/internal/config"
 	"github.com/RESERPIX/hubigr/internal/email"
 	"github.com/RESERPIX/hubigr/internal/http"
+	"github.com/RESERPIX/hubigr/internal/logger"
 	"github.com/RESERPIX/hubigr/internal/ratelimit"
 	"github.com/RESERPIX/hubigr/internal/store"
 	"github.com/RESERPIX/hubigr/internal/upload"
@@ -21,6 +22,10 @@ import (
 func main() {
 	// Загрузка конфигурации
 	cfg := config.Load()
+	
+	// Инициализация логгера
+	logger.Init(cfg.LogLevel)
+	logger.Info("Starting Hubigr Auth Service", "version", "1.0.0")
 
 	// Подключение к базе данных
 	db, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
@@ -31,8 +36,10 @@ func main() {
 
 	// Проверка подключения
 	if err := db.Ping(context.Background()); err != nil {
+		logger.Error("Failed to ping database", "error", err)
 		log.Fatal("Failed to ping database:", err)
 	}
+	logger.Info("Database connected successfully")
 
 	// Инициализация репозиториев
 	userRepo := store.NewUserRepo(db)
@@ -40,8 +47,10 @@ func main() {
 	// Инициализация Redis rate limiter
 	limiter, err := ratelimit.NewRedisLimiter(cfg.RedisURL)
 	if err != nil {
+		logger.Error("Failed to connect to Redis", "error", err)
 		log.Fatal("Failed to connect to Redis:", err)
 	}
+	logger.Info("Redis connected successfully")
 
 	// Инициализация email sender
 	var emailSender http.EmailSender
@@ -51,7 +60,7 @@ func main() {
 	} else {
 		// Разработка: mock sender
 		emailSender = email.NewMockSender()
-		log.Println("Using mock email sender for development")
+		logger.Info("Using mock email sender for development")
 	}
 
 	// Инициализация avatar uploader

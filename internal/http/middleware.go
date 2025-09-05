@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/RESERPIX/hubigr/internal/domain"
+	"github.com/RESERPIX/hubigr/internal/logger"
 	"github.com/RESERPIX/hubigr/internal/ratelimit"
 	"github.com/RESERPIX/hubigr/internal/security"
 	"github.com/gofiber/fiber/v2"
@@ -71,6 +72,23 @@ func LoginRateLimitMiddleware(limiter *ratelimit.RedisLimiter) fiber.Handler {
 				"Слишком много попыток входа. Попробуйте через "+ttl.String()))
 		}
 		
+		return c.Next()
+	}
+}
+
+// LoggingMiddleware - логирование действий пользователей
+func LoggingMiddleware() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		userID := c.Locals("user_id")
+		if userID != nil {
+			logger.Info("User action",
+				"user_id", userID,
+				"method", c.Method(),
+				"path", c.Path(),
+				"ip", c.IP(),
+				"user_agent", c.Get("User-Agent"),
+			)
+		}
 		return c.Next()
 	}
 }

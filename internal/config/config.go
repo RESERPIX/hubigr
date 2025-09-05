@@ -15,6 +15,7 @@ type Config struct {
 	SMTPPass    string
 	SMTPFrom    string
 	BaseURL     string
+	LogLevel    string
 }
 
 func Load() *Config {
@@ -29,6 +30,7 @@ func Load() *Config {
 		SMTPPass:    getEnv("SMTP_PASS", ""),
 		SMTPFrom:    getEnv("SMTP_FROM", "noreply@hubigr.com"),
 		BaseURL:     getEnv("BASE_URL", "http://localhost:3000"),
+		LogLevel:    getEnv("LOG_LEVEL", "info"),
 	}
 }
 
