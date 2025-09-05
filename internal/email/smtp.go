@@ -3,6 +3,7 @@ package email
 import (
 	"fmt"
 	"net/smtp"
+	"regexp"
 	"strings"
 )
 
@@ -28,6 +29,10 @@ func NewSMTPSender(host, port, username, password, from, baseURL string) *SMTPSe
 
 // SendVerificationEmail отправляет письмо подтверждения согласно UC-1.1.1
 func (s *SMTPSender) SendVerificationEmail(to, token string) error {
+	if err := validateEmailInput(to, token); err != nil {
+		return err
+	}
+	
 	verifyURL := fmt.Sprintf("%s/verify?token=%s", s.baseURL, token)
 
 	subject := "Подтверждение аккаунта - Hubigr"
@@ -50,6 +55,10 @@ func (s *SMTPSender) SendVerificationEmail(to, token string) error {
 
 // SendPasswordResetEmail отправляет письмо сброса пароля согласно UC-1.1.3
 func (s *SMTPSender) SendPasswordResetEmail(to, token string) error {
+	if err := validateEmailInput(to, token); err != nil {
+		return err
+	}
+	
 	resetURL := fmt.Sprintf("%s/reset-password?token=%s", s.baseURL, token)
 
 	subject := "Сброс пароля - Hubigr"
@@ -133,6 +142,35 @@ func maskToken(token string) string {
 		return "***"
 	}
 	return token[:4] + "***" + token[len(token)-4:]
+}
+
+// validateEmailInput проверяет входные данные email
+func validateEmailInput(to, token string) error {
+	if to == "" {
+		return fmt.Errorf("email address cannot be empty")
+	}
+	
+	if token == "" {
+		return fmt.Errorf("token cannot be empty")
+	}
+	
+	// Проверка на CRLF инъекцию в email
+	if strings.ContainsAny(to, "\r\n") {
+		return fmt.Errorf("invalid characters in email address")
+	}
+	
+	// Проверка на CRLF инъекцию в token
+	if strings.ContainsAny(token, "\r\n") {
+		return fmt.Errorf("invalid characters in token")
+	}
+	
+	// Простая проверка формата email
+	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	if !emailRegex.MatchString(to) {
+		return fmt.Errorf("invalid email format")
+	}
+	
+	return nil
 }
 
 // EmailSender интерфейс для отправки email

@@ -45,13 +45,13 @@ func (t *TurnstileService) Verify(token, remoteIP string) (bool, error) {
 
 	resp, err := t.client.PostForm(TurnstileVerifyURL, data)
 	if err != nil {
-		return false, fmt.Errorf("ошибка запроса к Turnstile: %v", err)
+		return false, fmt.Errorf("turnstile request failed")
 	}
 	defer resp.Body.Close()
 
 	var result TurnstileResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return false, fmt.Errorf("ошибка парсинга ответа: %v", err)
+		return false, fmt.Errorf("response parsing failed")
 	}
 
 	return result.Success, nil

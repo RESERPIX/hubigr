@@ -28,17 +28,25 @@ func Init(level string) {
 }
 
 func Info(msg string, args ...any) {
-	Logger.Info(msg, args...)
+	if Logger != nil {
+		Logger.Info(msg, args...)
+	}
 }
 
 func Error(msg string, args ...any) {
-	Logger.Error(msg, args...)
+	if Logger != nil {
+		Logger.Error(msg, args...)
+	}
 }
 
 func Debug(msg string, args ...any) {
-	Logger.Debug(msg, args...)
+	if Logger != nil {
+		Logger.Debug(msg, args...)
+	}
 }
 
 func Warn(msg string, args ...any) {
-	Logger.Warn(msg, args...)
+	if Logger != nil {
+		Logger.Warn(msg, args...)
+	}
 }

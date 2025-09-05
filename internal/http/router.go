@@ -4,16 +4,18 @@ import (
 	"time"
 
 	"github.com/RESERPIX/hubigr/internal/domain"
+	"github.com/RESERPIX/hubigr/internal/metrics"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 )
 
-func SetupRoutes(app *fiber.App, handlers *Handlers, jwtSecret string) {
+func SetupRoutes(app *fiber.App, handlers *Handlers, jwtSecret string, corsOrigins string) {
 	// Middleware
+	app.Use(metrics.MetricsMiddleware())
 	app.Use(logger.New())
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "*",
+		AllowOrigins:     corsOrigins,
 		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
 		AllowHeaders:     "Origin,Authorization,Content-Type",
 		ExposeHeaders:    "Content-Length",
@@ -43,8 +45,8 @@ func SetupRoutes(app *fiber.App, handlers *Handlers, jwtSecret string) {
 	profile.Get("/submissions", handlers.GetMySubmissions)
 	profile.Post("/avatar", handlers.UploadAvatar)
 	
-	// Статические файлы (аватары)
-	app.Static("/uploads", "./uploads")
+	// Безопасная раздача статических файлов (аватары)
+	app.Get("/uploads/*", SecureStaticHandler)
 
 	// Admin routes (для будущего расширения)
 	admin := api.Group("/admin", AuthMiddleware(jwtSecret), RoleMiddleware(domain.RoleAdmin, domain.RoleModerator))
@@ -52,4 +54,8 @@ func SetupRoutes(app *fiber.App, handlers *Handlers, jwtSecret string) {
 
 	// Health check
 	api.Get("/health", handlers.Health)
+	
+	// Metrics endpoints
+	api.Get("/metrics", handlers.Metrics)
+	api.Get("/metrics/prometheus", handlers.PrometheusMetrics)
 }

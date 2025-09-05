@@ -28,20 +28,31 @@ func NewRedisLimiter(redisURL string) (*RedisLimiter, error) {
 
 // Allow проверяет лимит согласно ТЗ: 5 попыток входа/мин
 func (r *RedisLimiter) Allow(ctx context.Context, key string, limit int, window time.Duration) (bool, error) {
-	pipe := r.client.Pipeline()
-	
-	// Увеличиваем счетчик
-	incr := pipe.Incr(ctx, key)
-	// Устанавливаем TTL только при первом запросе
-	pipe.Expire(ctx, key, window)
-	
-	_, err := pipe.Exec(ctx)
+	// Проверяем текущий счетчик
+	current, err := r.client.Get(ctx, key).Int64()
+	if err == redis.Nil {
+		// Первый запрос - создаем ключ с TTL
+		pipe := r.client.Pipeline()
+		pipe.Set(ctx, key, 1, window)
+		_, err := pipe.Exec(ctx)
+		return err == nil, err
+	}
 	if err != nil {
 		return false, err
 	}
 	
-	count := incr.Val()
-	return count <= int64(limit), nil
+	// Проверяем лимит
+	if current >= int64(limit) {
+		return false, nil
+	}
+	
+	// Увеличиваем счетчик БЕЗ сброса TTL
+	newCount, err := r.client.Incr(ctx, key).Result()
+	if err != nil {
+		return false, err
+	}
+	
+	return newCount <= int64(limit), nil
 }
 
 // GetRemaining возвращает оставшиеся попытки

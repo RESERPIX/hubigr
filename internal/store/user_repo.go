@@ -158,17 +158,12 @@ func (r *UserRepo) GetNotificationSettings(ctx context.Context, userID int64) (*
 
 	if err != nil {
 		// Возвращаем дефолтные настройки
-		return &domain.NotificationSettings{
-			UserID:   userID,
-			NewGame:  true,
-			NewBuild: true,
-			NewPost:  true,
-			Channels: domain.Channels{InApp: true},
-		}, nil
+		defaultSettings := domain.DefaultNotificationSettings(userID)
+		return &defaultSettings, nil
 	}
 
 	if err := json.Unmarshal(channelsJSON, &settings.Channels); err != nil {
-		settings.Channels = domain.Channels{InApp: true}
+		settings.Channels = domain.DefaultChannels()
 	}
 	return &settings, nil
 }
@@ -266,6 +261,22 @@ func (r *UserRepo) GetUserSubmissions(ctx context.Context, userID int64, page, l
 // Ping - проверка соединения с БД
 func (r *UserRepo) Ping(ctx context.Context) error {
 	return r.db.Ping(ctx)
+}
+
+// GetPoolStats - получение статистики connection pool
+func (r *UserRepo) GetPoolStats() map[string]interface{} {
+	stats := r.db.Stat()
+	return map[string]interface{}{
+		"acquired_conns":      stats.AcquiredConns(),
+		"constructing_conns": stats.ConstructingConns(),
+		"idle_conns":          stats.IdleConns(),
+		"max_conns":           stats.MaxConns(),
+		"total_conns":         stats.TotalConns(),
+		"acquire_count":       stats.AcquireCount(),
+		"acquire_duration":    stats.AcquireDuration().String(),
+		"canceled_acquire_count": stats.CanceledAcquireCount(),
+		"empty_acquire_count":    stats.EmptyAcquireCount(),
+	}
 }
 
 // UpdateAvatar - обновление аватара пользователя

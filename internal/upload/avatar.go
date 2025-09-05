@@ -22,77 +22,73 @@ type AvatarUploader struct {
 }
 
 func NewAvatarUploader(baseURL string) *AvatarUploader {
-	// Создаем директорию с безопасными правами
-	os.MkdirAll(UploadDir, 0700)
+	// Создаем директорию с правами 0755 для веб-сервера
+	os.MkdirAll(UploadDir, 0755)
 	return &AvatarUploader{baseURL: baseURL}
 }
 
 // UploadAvatar загружает аватар согласно UC-1.2.1 (jpeg/png, до 2 МБ)
 func (u *AvatarUploader) UploadAvatar(userID int64, file *multipart.FileHeader) (string, error) {
-	// Проверка размера
 	if file.Size > MaxAvatarSize {
-		return "", fmt.Errorf("файл слишком большой, максимум 2 МБ")
+		return "", fmt.Errorf("file too large")
 	}
 
-	// Открытие файла для проверки
 	src, err := file.Open()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("file open failed")
 	}
 	defer src.Close()
 
-	// Проверка магических байтов (первые 512 байт)
 	buffer := make([]byte, 512)
 	n, err := src.Read(buffer)
 	if err != nil && err != io.EOF {
-		return "", fmt.Errorf("ошибка чтения файла: %v", err)
+		return "", fmt.Errorf("file read failed")
 	}
 	buffer = buffer[:n]
 
-	// Проверка на реальный тип файла
 	if !isValidImageByMagicBytes(buffer) {
-		return "", fmt.Errorf("файл не является изображением JPEG/PNG")
+		return "", fmt.Errorf("invalid image format")
 	}
 
-	// Проверка на вредоносное содержимое
 	if containsMaliciousContent(buffer) {
-		return "", fmt.Errorf("файл содержит подозрительное содержимое")
+		return "", fmt.Errorf("invalid file content")
 	}
 
-	// Возврат к началу файла
 	src.Seek(0, 0)
 
-	// Генерация безопасного имени файла
 	randomID, err := generateSecureFilename()
 	if err != nil {
-		return "", fmt.Errorf("ошибка генерации имени: %v", err)
+		return "", fmt.Errorf("filename generation failed")
 	}
 	
-	ext := getFileExtension(file.Filename)
-	filename := fmt.Sprintf("%d_%s%s", userID, randomID, ext)
+	filename := fmt.Sprintf("%d_%s.jpg", userID, randomID)
 	
-	// Проверка безопасности пути
-	filePath := filepath.Join(UploadDir, filepath.Base(filename))
-	cleanPath := filepath.Clean(filePath)
-	if !strings.HasPrefix(cleanPath, UploadDir) {
-		return "", fmt.Errorf("небезопасный путь")
+	// Создаем абсолютный путь к upload директории
+	absUploadDir, err := filepath.Abs(UploadDir)
+	if err != nil {
+		return "", fmt.Errorf("path resolution failed")
+	}
+	
+	// Создаем полный путь к файлу БЕЗ использования пользовательского ввода
+	filePath := filepath.Join(absUploadDir, filename)
+	
+	// Проверяем что результирующий путь находится в пределах upload директории
+	if !strings.HasPrefix(filePath, absUploadDir+string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid path")
 	}
 
-	// Создание файла с безопасными правами
-	dst, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	dst, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("file creation failed")
 	}
 	defer dst.Close()
 
-	// Копирование данных
 	_, err = io.Copy(dst, src)
 	if err != nil {
-		os.Remove(filePath) // Удаляем файл при ошибке
-		return "", err
+		os.Remove(filePath)
+		return "", fmt.Errorf("file write failed")
 	}
 
-	// Возвращаем URL для доступа к файлу
 	avatarURL := fmt.Sprintf("%s/uploads/avatars/%s", u.baseURL, filename)
 	return avatarURL, nil
 }
@@ -103,21 +99,30 @@ func (u *AvatarUploader) DeleteAvatar(avatarURL string) error {
 		return nil
 	}
 
-	// Извлекаем имя файла из URL безопасно
 	parts := strings.Split(avatarURL, "/")
 	if len(parts) == 0 {
 		return nil
 	}
 	filename := filepath.Base(parts[len(parts)-1])
-	filePath := filepath.Join(UploadDir, filename)
 	
-	// Проверка безопасности пути
-	cleanPath := filepath.Clean(filePath)
-	if !strings.HasPrefix(cleanPath, UploadDir) {
-		return fmt.Errorf("небезопасный путь")
+	// Проверяем что имя файла соответствует нашему формату
+	for _, r := range filename {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '.') {
+			return fmt.Errorf("invalid filename")
+		}
+	}
+	
+	absUploadDir, err := filepath.Abs(UploadDir)
+	if err != nil {
+		return fmt.Errorf("path resolution failed")
+	}
+	
+	filePath := filepath.Join(absUploadDir, filename)
+	
+	if !strings.HasPrefix(filePath, absUploadDir+string(filepath.Separator)) {
+		return fmt.Errorf("invalid path")
 	}
 
-	// Удаляем файл если существует
 	if _, err := os.Stat(filePath); err == nil {
 		return os.Remove(filePath)
 	}
@@ -186,10 +191,4 @@ func generateSecureFilename() (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-func getFileExtension(filename string) string {
-	ext := filepath.Ext(filename)
-	if ext == "" {
-		return ".jpg" // дефолтное расширение
-	}
-	return strings.ToLower(ext)
-}
+

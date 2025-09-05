@@ -7,27 +7,16 @@ import (
 	"github.com/RESERPIX/hubigr/internal/captcha"
 	"github.com/RESERPIX/hubigr/internal/domain"
 	"github.com/RESERPIX/hubigr/internal/logger"
+	"github.com/RESERPIX/hubigr/internal/metrics"
 	"github.com/RESERPIX/hubigr/internal/ratelimit"
 	"github.com/RESERPIX/hubigr/internal/security"
 	"github.com/RESERPIX/hubigr/internal/store"
+	"github.com/RESERPIX/hubigr/internal/utils"
 	"github.com/RESERPIX/hubigr/internal/validation"
 	"github.com/gofiber/fiber/v2"
 )
 
-// maskEmail маскирует email для безопасного логирования
-func maskEmail(email string) string {
-	parts := strings.Split(email, "@")
-	if len(parts) != 2 {
-		return "***@***"
-	}
-	local := parts[0]
-	domain := parts[1]
-	
-	if len(local) <= 2 {
-		return "***@" + domain
-	}
-	return local[:2] + "***@" + domain
-}
+
 
 type Handlers struct {
 	userRepo       *store.UserRepo
@@ -90,8 +79,13 @@ func (h *Handlers) SignUp(c *fiber.Ctx) error {
 
 	// Отправка email с подтверждением
 	if err := h.emailSender.SendVerificationEmail(req.Email, token); err != nil {
-		logger.Error("Failed to send verification email", "error", err, "email", maskEmail(req.Email))
+		logger.Error("Failed to send verification email", "error", err, "email", utils.SanitizeEmail(req.Email))
+	} else {
+		metrics.IncrementEmailSent()
 	}
+	
+	// Метрика регистрации
+	metrics.IncrementUserRegistered()
 
 	return c.JSON(fiber.Map{
 		"message": "Мы отправили ссылку для подтверждения на email",
@@ -109,11 +103,13 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 	// Получение пользователя
 	user, err := h.userRepo.GetByEmail(c.Context(), req.Email)
 	if err != nil || user == nil {
+		metrics.IncrementLoginAttempt(false)
 		return c.Status(401).JSON(domain.NewError("unauthorized", "Неверный email или пароль"))
 	}
 
 	// Проверка пароля
 	if !security.CheckPassword(user.Hash, req.Password) {
+		metrics.IncrementLoginAttempt(false)
 		return c.Status(401).JSON(domain.NewError("unauthorized", "Неверный email или пароль"))
 	}
 
@@ -135,6 +131,9 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 
 	// Очистка хеша пароля из ответа
 	user.Hash = ""
+	
+	// Метрика успешного входа
+	metrics.IncrementLoginAttempt(true)
 
 	return c.JSON(domain.AuthResponse{
 		User:  *user,
@@ -186,12 +185,28 @@ func (h *Handlers) Health(c *fiber.Ctx) error {
 		})
 	}
 
+	// Статистика connection pool
+	poolStats := h.userRepo.GetPoolStats()
+
 	return c.JSON(fiber.Map{
 		"status": "healthy",
 		"database": "up",
 		"redis": "up",
 		"version": "1.0.0",
+		"pool_stats": poolStats,
 	})
+}
+
+// Metrics - эндпоинт для метрик
+func (h *Handlers) Metrics(c *fiber.Ctx) error {
+	m := metrics.GetMetrics()
+	return c.JSON(m.GetSnapshot())
+}
+
+// PrometheusMetrics - эндпоинт для Prometheus
+func (h *Handlers) PrometheusMetrics(c *fiber.Ctx) error {
+	c.Set("Content-Type", "text/plain; charset=utf-8")
+	return c.SendString(metrics.PrometheusFormat())
 }
 
 // GetProfile - UC-1.2.2 из ТЗ
@@ -303,7 +318,7 @@ func (h *Handlers) ResendVerification(c *fiber.Ctx) error {
 
 	// Отправка email
 	if err := h.emailSender.SendVerificationEmail(req.Email, token); err != nil {
-		logger.Error("Failed to send verification email", "error", err, "email", maskEmail(req.Email))
+		logger.Error("Failed to send verification email", "error", err, "email", utils.SanitizeEmail(req.Email))
 	}
 
 	return c.JSON(fiber.Map{"message": "Новая ссылка отправлена на email"})
@@ -336,7 +351,7 @@ func (h *Handlers) ResetPasswordRequest(c *fiber.Ctx) error {
 
 	// Отправка email
 	if err := h.emailSender.SendPasswordResetEmail(req.Email, token); err != nil {
-		logger.Error("Failed to send reset email", "error", err, "email", maskEmail(req.Email))
+		logger.Error("Failed to send reset email", "error", err, "email", utils.SanitizeEmail(req.Email))
 	}
 
 	return c.JSON(fiber.Map{"message": "Мы отправили ссылку на email"})
@@ -387,9 +402,17 @@ func (h *Handlers) GetMySubmissions(c *fiber.Ctx) error {
 		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка получения ID пользователя"))
 	}
 
-	// Пагинация
+	// Пагинация с валидацией
 	page := c.QueryInt("page", 1)
 	limit := c.QueryInt("limit", 20)
+	
+	// Валидация пагинации
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
 
 	submissions, total, err := h.userRepo.GetUserSubmissions(c.Context(), userID, page, limit)
 	if err != nil {
@@ -438,7 +461,9 @@ func (h *Handlers) UploadAvatar(c *fiber.Ctx) error {
 
 	// Удаляем старый аватар
 	if user.Avatar != nil && *user.Avatar != "" {
-		h.avatarUploader.DeleteAvatar(*user.Avatar)
+		if err := h.avatarUploader.DeleteAvatar(*user.Avatar); err != nil {
+			logger.Error("Failed to delete old avatar", "error", err, "user_id", userID)
+		}
 	}
 
 	return c.JSON(fiber.Map{

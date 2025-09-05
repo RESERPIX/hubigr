@@ -33,8 +33,22 @@ func main() {
 	logger.Init(cfg.LogLevel)
 	logger.Info("Starting Hubigr Auth Service", "version", "1.0.0")
 
+	// Конфигурация connection pool
+	poolConfig, err := pgxpool.ParseConfig(cfg.DatabaseURL)
+	if err != nil {
+		logger.Error("Failed to parse database URL", "error", err)
+		os.Exit(1)
+	}
+	
+	// Настройка pool параметров
+	poolConfig.MaxConns = 25                // Максимум подключений
+	poolConfig.MinConns = 5                 // Минимум подключений
+	poolConfig.MaxConnLifetime = time.Hour  // Время жизни подключения
+	poolConfig.MaxConnIdleTime = time.Minute * 30 // Время простоя
+	poolConfig.HealthCheckPeriod = time.Minute * 5 // Проверка здоровья
+	
 	// Подключение к базе данных
-	db, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
+	db, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
 	if err != nil {
 		logger.Error("Failed to connect to database", "error", err)
 		os.Exit(1)
@@ -85,7 +99,7 @@ func main() {
 	})
 
 	// Настройка маршрутов
-	http.SetupRoutes(app, handlers, cfg.JWTSecret)
+	http.SetupRoutes(app, handlers, cfg.JWTSecret, cfg.CORSOrigins)
 
 	// Graceful shutdown
 	c := make(chan os.Signal, 1)

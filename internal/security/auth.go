@@ -54,15 +54,15 @@ func VerifyJWT(tokenString, secret string) (*Claims, error) {
 	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
 		return claims, nil
 	}
-	return nil, jwt.ErrInvalidKey
+	return nil, fmt.Errorf("invalid token claims")
 }
 
 // GenerateToken - для email verification (UC-1.1.1)
 func GenerateToken() (string, error) {
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
-		// Критическая ошибка криптографии - возвращаем ошибку вместо panic
-		return "", fmt.Errorf("ошибка генерации случайных байт: %v", err)
+		// Критическая ошибка криптографии
+		return "", fmt.Errorf("ошибка генерации случайных байт")
 	}
 	return hex.EncodeToString(bytes), nil
 }

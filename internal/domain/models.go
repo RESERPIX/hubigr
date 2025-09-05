@@ -52,6 +52,24 @@ type Channels struct {
 	Email *bool `json:"email,omitempty"`
 }
 
+// DefaultChannels возвращает дефолтные настройки каналов
+func DefaultChannels() Channels {
+	return Channels{
+		InApp: true,
+	}
+}
+
+// DefaultNotificationSettings возвращает дефолтные настройки уведомлений
+func DefaultNotificationSettings(userID int64) NotificationSettings {
+	return NotificationSettings{
+		UserID:   userID,
+		NewGame:  true,
+		NewBuild: true,
+		NewPost:  true,
+		Channels: DefaultChannels(),
+	}
+}
+
 // API Request/Response types
 type SignUpRequest struct {
 	Email           string `json:"email"`
