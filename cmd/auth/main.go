@@ -13,7 +13,6 @@ import (
 	"github.com/RESERPIX/hubigr/internal/errors"
 	"github.com/RESERPIX/hubigr/internal/http"
 	"github.com/RESERPIX/hubigr/internal/logger"
-	"github.com/RESERPIX/hubigr/internal/monitoring"
 	"github.com/RESERPIX/hubigr/internal/ratelimit"
 	"github.com/RESERPIX/hubigr/internal/store"
 	"github.com/RESERPIX/hubigr/internal/upload"
@@ -93,9 +92,6 @@ func main() {
 	// Инициализация Turnstile
 	turnstile := captcha.NewTurnstileService(cfg.TurnstileSecret)
 	
-	// Инициализация мониторинга connection pools
-	poolMonitor := monitoring.NewPoolMonitor(db, limiter.GetClient(), 30*time.Second)
-	go poolMonitor.Start(context.Background())
 	
 	// Инициализация handlers
 	handlers := http.NewHandlers(userRepo, refreshRepo, limiter, emailSender, avatarUploader, cfg.JWTSecret, turnstile, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
@@ -118,8 +114,6 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		
-		// Останавливаем мониторинг pools
-		poolMonitor.Stop()
 		
 		// Закрываем Redis соединение
 		if err := limiter.Close(); err != nil {

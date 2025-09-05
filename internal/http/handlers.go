@@ -206,61 +206,29 @@ func (h *Handlers) Health(c *fiber.Ctx) error {
 	m := metrics.GetMetrics()
 	snapshot := m.GetSnapshot()
 	
-	// Получаем статистику connection pools
-	dbPoolStats := h.userRepo.GetPoolStats()
-	redisPoolStats := h.limiter.GetClient().PoolStats()
-	
 	// Простые алерты
 	alerts := []string{}
 	if failedLogins, ok := snapshot["failed_logins"].(int64); ok && failedLogins > 10 {
 		alerts = append(alerts, "High failed login rate")
 	}
-	
-	// Проверяем connection pools на проблемы
-	if acquiredConns, ok := dbPoolStats["acquired_conns"].(int32); ok {
-		if maxConns, ok := dbPoolStats["max_conns"].(int32); ok {
-			if float64(acquiredConns)/float64(maxConns) > 0.8 {
-				alerts = append(alerts, "DB connection pool usage high")
-			}
-		}
-	}
-	
-	if redisPoolStats.Timeouts > 0 {
-		alerts = append(alerts, "Redis connection timeouts detected")
-	}
-	
 	if len(alerts) > 0 {
 		status = "degraded"
 	}
 
 	response := fiber.Map{
 		"status":   status,
-		"database": map[string]interface{}{"status": "up", "error": dbErr, "pool_stats": dbPoolStats},
-		"redis":    map[string]interface{}{"status": "up", "error": redisErr, "pool_stats": map[string]interface{}{
-			"hits":        redisPoolStats.Hits,
-			"misses":      redisPoolStats.Misses,
-			"timeouts":    redisPoolStats.Timeouts,
-			"total_conns": redisPoolStats.TotalConns,
-			"idle_conns":  redisPoolStats.IdleConns,
-			"stale_conns": redisPoolStats.StaleConns,
-		}},
+		"database": map[string]interface{}{"status": "up", "error": dbErr},
+		"redis":    map[string]interface{}{"status": "up", "error": redisErr},
 		"version":  "1.0.0",
 		"alerts":   alerts,
 		"metrics":  snapshot,
 	}
 	
 	if dbErr != nil {
-		response["database"] = map[string]interface{}{"status": "down", "error": dbErr.Error(), "pool_stats": dbPoolStats}
+		response["database"] = map[string]interface{}{"status": "down", "error": dbErr.Error()}
 	}
 	if redisErr != nil {
-		response["redis"] = map[string]interface{}{"status": "down", "error": redisErr.Error(), "pool_stats": map[string]interface{}{
-			"hits":        redisPoolStats.Hits,
-			"misses":      redisPoolStats.Misses,
-			"timeouts":    redisPoolStats.Timeouts,
-			"total_conns": redisPoolStats.TotalConns,
-			"idle_conns":  redisPoolStats.IdleConns,
-			"stale_conns": redisPoolStats.StaleConns,
-		}}
+		response["redis"] = map[string]interface{}{"status": "down", "error": redisErr.Error()}
 	}
 
 	return c.Status(statusCode).JSON(response)

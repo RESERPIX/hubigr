@@ -5,9 +5,7 @@ import (
 	"strings"
 )
 
-var (
-	logSanitizeRegex = regexp.MustCompile(`[\r\n\t\x00-\x1f\x7f-\x9f]`)
-)
+var logSanitizeRegex = regexp.MustCompile(`[\r\n\t\x00-\x1f\x7f-\x9f]`)
 
 // SanitizeForLog очищает строку от символов log injection
 func SanitizeForLog(input string) string {
