@@ -76,12 +76,7 @@ CREATE TABLE IF NOT EXISTS user_submissions (
 
 CREATE INDEX IF NOT EXISTS idx_user_submissions_user ON user_submissions (user_id, submitted_at DESC);
 
--- Тестовые данные для демо
-INSERT INTO user_submissions (user_id, jam_title, jam_slug, game_title, game_slug, status, submitted_at) 
-VALUES 
-    (1, 'Spring Game Jam 2024', 'spring-jam-2024', 'My Awesome Game', 'my-awesome-game', 'active', NOW() - INTERVAL '2 days'),
-    (1, 'Ludum Dare 54', 'ludum-dare-54', 'Pixel Adventure', 'pixel-adventure', 'active', NOW() - INTERVAL '1 month')
-ON CONFLICT DO NOTHING;
+-- Тестовые данные будут добавлены после регистрации пользователей
 
 -- Очистка истекших токенов
 CREATE OR REPLACE FUNCTION cleanup_expired_tokens() RETURNS void AS $$

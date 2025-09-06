@@ -1,7 +1,3 @@
-# Hubigr - Платформа для геймджемов
-
-Веб-платформа для организации и проведения игровых джемов согласно техническому заданию.
-
 ## Архитектура
 
 - **Go** - Backend сервисы
@@ -15,6 +11,7 @@
 Реализованы модули:
 - ✅ 1.1 Аккаунты и доступ
 - ✅ 1.2 Профили
+- ✅ Frontend UI/UX
 - ⏳ 1.3 Игры и запуск в браузере
 - ⏳ 1.4 Модуль «Геймджем»
 - ⏳ 1.5 Коммуникации и уведомления
@@ -52,24 +49,8 @@ docker-compose up -d
 
 # Проверка здоровья
 curl http://localhost:8000/api/v1/health
-
-# Тест rate limiting (5 попыток/мин)
-./test_ratelimit.sh
-
-# Тест email verification
-./test_email.sh
-
-# Тест восстановления пароля
-./test_reset_password.sh
-
-# Тест списка сабмитов
-./test_submissions.sh
-
-# Тест загрузки аватара
-./test_avatar.sh
 ```
 
-## Валидация согласно ТЗ
 
 ### Регистрация (UC-1.1.1)
 - Email: формат example@example.com
@@ -90,10 +71,12 @@ curl http://localhost:8000/api/v1/health
 - **Refresh токены с ротацией** ✅
 - **TTL политики: access 5-15 мин, refresh 7-30 дней** ✅
 - **Rate limiting с Redis: 5 попыток входа/мин** ✅
-- **Email отправка для verification (SMTP + Mock)** ✅
+- **Turnstile капча на регистрации** ✅
+- **Email отправка для verification (SMTP)** ✅
 - **Восстановление пароля (UC-1.1.3)** ✅
 - **Список сабмитов пользователя (UC-1.2.2)** ✅
 - **Загрузка аватаров через API** ✅
+- **Безопасная раздача статических файлов** ✅
 - Валидация всех входных данных
 - CORS настроен
 
@@ -105,4 +88,19 @@ curl http://localhost:8000/api/v1/health
 - `follows` (DM-3.14)
 - `email_verify_tokens`
 - `password_reset_tokens`
+- `refresh_tokens`
 - `user_submissions` (заглушка для UC-1.2.2)
+
+## SMTP настройка
+
+```bash
+# Добавьте в .env для реальной отправки email:
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=ваш-email@gmail.com
+SMTP_PASS=app-password-от-google
+SMTP_FROM=noreply@hubigr.com
+
+# Для Gmail нужен App Password:
+# https://myaccount.google.com/apppasswords
+```

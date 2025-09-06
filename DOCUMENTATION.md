@@ -99,9 +99,7 @@ hubigr/
 ### Быстрый старт
 
 ```bash
-# 1. Клонирование репозитория
-git clone <repository-url>
-cd hubigr
+# 1. Директория проекта
 
 # 2. Настройка конфигурации
 cp .env.example .env

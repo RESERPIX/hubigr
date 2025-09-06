@@ -7,7 +7,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-hubigr}
       POSTGRES_USER: ${POSTGRES_USER:-user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: password123
     ports:
       - "5433:5432"
     volumes:
@@ -37,9 +37,9 @@ services:
       dockerfile: Dockerfile.auth
     environment:
       PORT: 8080
-      DATABASE_URL: postgres://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-hubigr}?sslmode=disable
+      DATABASE_URL: postgres://user:password123@postgres:5432/hubigr?sslmode=disable
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: super-secret-jwt-key-32-characters-long-for-development
       BASE_URL: http://localhost:3000
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}

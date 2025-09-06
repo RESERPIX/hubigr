@@ -103,6 +103,8 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(domain.NewError("bad_request", "Неверный формат данных"))
 	}
+	
+
 
 	// Получение пользователя
 	user, err := h.userRepo.GetByEmail(c.Context(), req.Email)

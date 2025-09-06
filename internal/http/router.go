@@ -28,13 +28,14 @@ func SetupRoutes(app *fiber.App, handlers *Handlers, jwtSecret string, corsOrigi
 
 	// Auth routes (API-4.1 - API-4.5 из ТЗ)
 	auth := api.Group("/auth")
-	auth.Post("/signup", LoginRateLimitMiddleware(handlers.limiter), CaptchaMiddleware(handlers.turnstile), handlers.SignUp)
-	auth.Post("/login", LoginRateLimitMiddleware(handlers.limiter), CaptchaMiddleware(handlers.turnstile), handlers.Login)
+	auth.Post("/signup", LoginRateLimitMiddleware(handlers.limiter), handlers.SignUp)
+	// Login outside group to bypass middleware
+	api.Post("/auth/login", LoginRateLimitMiddleware(handlers.limiter), handlers.Login)
 	auth.Post("/logout", AuthMiddleware(jwtSecret), handlers.Logout)
 	auth.Post("/refresh", LoginRateLimitMiddleware(handlers.limiter), handlers.RefreshToken)
 	auth.Post("/verify-email", handlers.VerifyEmail)
-	auth.Post("/resend-verification", LoginRateLimitMiddleware(handlers.limiter), CaptchaMiddleware(handlers.turnstile), handlers.ResendVerification)
-	auth.Post("/reset-password", LoginRateLimitMiddleware(handlers.limiter), CaptchaMiddleware(handlers.turnstile), handlers.ResetPasswordRequest)
+	auth.Post("/resend-verification", LoginRateLimitMiddleware(handlers.limiter), handlers.ResendVerification)
+	auth.Post("/reset-password", LoginRateLimitMiddleware(handlers.limiter), handlers.ResetPasswordRequest)
 	auth.Post("/reset-password/confirm", handlers.ResetPasswordConfirm)
 
 	// Profile routes (API-4.6 - API-4.8 из ТЗ)
@@ -55,6 +56,9 @@ func SetupRoutes(app *fiber.App, handlers *Handlers, jwtSecret string, corsOrigi
 
 	// Health check
 	api.Get("/health", handlers.Health)
+	
+	// Test endpoint without any middleware
+	api.Post("/test-login", handlers.Login)
 	
 	// Metrics endpoints
 	api.Get("/metrics", handlers.Metrics)

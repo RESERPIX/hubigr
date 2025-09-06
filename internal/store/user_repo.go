@@ -236,9 +236,7 @@ func (r *UserRepo) GetUserSubmissions(ctx context.Context, userID int64, page, l
 		return nil, 0, err
 	}
 	defer func() {
-		if closeErr := rows.Close(); closeErr != nil {
-			// Логируем ошибку закрытия, но не возвращаем её
-		}
+		rows.Close()
 	}()
 
 	var submissions []UserSubmission
@@ -269,13 +267,13 @@ func (r *UserRepo) Ping(ctx context.Context) error {
 func (r *UserRepo) GetPoolStats() map[string]interface{} {
 	stats := r.db.Stat()
 	return map[string]interface{}{
-		"acquired_conns":      stats.AcquiredConns(),
-		"constructing_conns": stats.ConstructingConns(),
-		"idle_conns":          stats.IdleConns(),
-		"max_conns":           stats.MaxConns(),
-		"total_conns":         stats.TotalConns(),
-		"acquire_count":       stats.AcquireCount(),
-		"acquire_duration":    stats.AcquireDuration().String(),
+		"acquired_conns":         stats.AcquiredConns(),
+		"constructing_conns":     stats.ConstructingConns(),
+		"idle_conns":             stats.IdleConns(),
+		"max_conns":              stats.MaxConns(),
+		"total_conns":            stats.TotalConns(),
+		"acquire_count":          stats.AcquireCount(),
+		"acquire_duration":       stats.AcquireDuration().String(),
 		"canceled_acquire_count": stats.CanceledAcquireCount(),
 		"empty_acquire_count":    stats.EmptyAcquireCount(),
 	}

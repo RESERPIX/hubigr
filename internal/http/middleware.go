@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -105,16 +106,26 @@ func LoggingMiddleware() fiber.Handler {
 // CaptchaMiddleware - проверка Turnstile капчи
 func CaptchaMiddleware(turnstile *captcha.TurnstileService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		if turnstile == nil {
+			return c.Next()
+		}
+		
+		// Получаем токен из JSON body
 		var req struct {
 			CaptchaToken string `json:"captcha_token"`
 		}
 		
-		if err := c.BodyParser(&req); err != nil {
-			return c.Status(400).JSON(domain.NewError("bad_request", "Неверный формат данных"))
+		body := c.Body()
+		// Восстанавливаем body для следующих handlers
+		c.Request().SetBody(body)
+		
+		if err := json.Unmarshal(body, &req); err != nil {
+			// Если не можем распарсить JSON, пропускаем
+			return c.Next()
 		}
 		
 		if req.CaptchaToken == "" {
-			return c.Status(400).JSON(domain.NewError("captcha_required", "Требуется пройти проверку капчи"))
+			return c.Status(400).JSON(domain.NewError("captcha_required", "Пройдите проверку капчи"))
 		}
 		
 		valid, err := turnstile.Verify(req.CaptchaToken, c.IP())

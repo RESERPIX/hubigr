@@ -94,7 +94,8 @@ func (u *AvatarUploader) UploadAvatar(userID int64, file *multipart.FileHeader) 
 		return "", fmt.Errorf("file write failed")
 	}
 
-	avatarURL := fmt.Sprintf("%s/uploads/avatars/%s", u.baseURL, filename)
+	// URL должен указывать на бэкенд, а не фронтенд
+	avatarURL := fmt.Sprintf("http://localhost:8080/uploads/avatars/%s", filename)
 	return avatarURL, nil
 }
 

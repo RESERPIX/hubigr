@@ -226,6 +226,42 @@
       ]
     },
     {
+      "endpoint": "/api/v1/auth/refresh",
+      "method": "POST",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/auth/refresh",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": ["http://auth:8080"],
+          "disable_host_sanitize": false
+        }
+      ],
+      "extra_config": {
+        "qos/ratelimit/router": {
+          "max_rate": 5,
+          "capacity": 10
+        }
+      }
+    },
+    {
+      "endpoint": "/api/v1/health",
+      "method": "GET",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/health",
+          "encoding": "json",
+          "sd": "static",
+          "method": "GET",
+          "host": ["http://auth:8080"],
+          "disable_host_sanitize": false
+        }
+      ]
+    },
+    {
       "endpoint": "/uploads/{file}",
       "method": "GET",
       "output_encoding": "no-op",

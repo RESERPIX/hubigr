@@ -58,7 +58,9 @@ func SecureStaticHandler(c *fiber.Ctx) error {
 	}
 	
 	// Критическая проверка - файл должен быть строго внутри uploads
-	if !strings.HasPrefix(absFullPath, absUploadsDir+string(filepath.Separator)) {
+	expectedPrefix := absUploadsDir + string(filepath.Separator)
+	if !strings.HasPrefix(absFullPath, expectedPrefix) || 
+	   strings.Contains(absFullPath[len(expectedPrefix):], "..") {
 		return c.Status(403).JSON(domain.NewError("forbidden", "Path traversal detected"))
 	}
 
