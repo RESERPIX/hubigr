@@ -54,14 +54,25 @@ func (u *AvatarUploader) UploadAvatar(userID int64, file *multipart.FileHeader) 
 		return "", fmt.Errorf("invalid file content")
 	}
 
+	// Определяем расширение файла на основе магических байт
+	extension := getImageExtension(buffer)
+	if extension == "" {
+		return "", fmt.Errorf("unsupported image format")
+	}
+
+	// Валидация расширения файла из имени
+	if !isValidFileExtension(file.Filename, extension) {
+		return "", fmt.Errorf("file extension does not match content")
+	}
+
 	src.Seek(0, 0)
 
 	randomID, err := generateSecureFilename()
 	if err != nil {
 		return "", fmt.Errorf("filename generation failed")
 	}
-	
-	filename := fmt.Sprintf("%d_%s.jpg", userID, randomID)
+
+	filename := fmt.Sprintf("%d_%s.%s", userID, randomID, extension)
 	
 	// Безопасное построение пути - используем только базовое имя файла
 	safeFilename := filepath.Base(filename)
@@ -95,7 +106,7 @@ func (u *AvatarUploader) UploadAvatar(userID int64, file *multipart.FileHeader) 
 	}
 
 	// URL должен указывать на бэкенд, а не фронтенд
-	avatarURL := fmt.Sprintf("http://localhost:8080/uploads/avatars/%s", filename)
+	avatarURL := fmt.Sprintf("%s/uploads/avatars/%s", u.baseURL, filename)
 	return avatarURL, nil
 }
 
@@ -203,6 +214,49 @@ func generateSecureFilename() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(bytes), nil
+}
+
+// getImageExtension определяет расширение файла на основе магических байт
+func getImageExtension(data []byte) string {
+	if len(data) < 8 {
+		return ""
+	}
+
+	// Проверка PNG
+	if bytes.HasPrefix(data, pngMagic) {
+		return "png"
+	}
+
+	// Проверка JPEG
+	if bytes.HasPrefix(data, jpegMagic1) ||
+	   bytes.HasPrefix(data, jpegMagic2) ||
+	   bytes.HasPrefix(data, jpegMagic3) {
+		return "jpg"
+	}
+
+	return ""
+}
+
+// isValidFileExtension проверяет соответствие расширения файла его содержимому
+func isValidFileExtension(filename, expectedExt string) bool {
+	if filename == "" {
+		return false
+	}
+
+	// Извлекаем расширение из имени файла
+	parts := strings.Split(filename, ".")
+	if len(parts) < 2 {
+		return false
+	}
+
+	actualExt := strings.ToLower(parts[len(parts)-1])
+
+	// Для JPEG принимаем как jpg, так и jpeg
+	if expectedExt == "jpg" && actualExt == "jpeg" {
+		return true
+	}
+
+	return actualExt == expectedExt
 }
 
 

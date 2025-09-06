@@ -4,17 +4,19 @@ services:
   # PostgreSQL база данных
   postgres:
     image: postgres:15
+    env_file:
+      - .env
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-hubigr}
       POSTGRES_USER: ${POSTGRES_USER:-user}
-      POSTGRES_PASSWORD: password123
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pass}
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./migrations:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d hubigr"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-hubigr}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -35,12 +37,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.auth
+    env_file:
+      - .env
     environment:
       PORT: 8080
-      DATABASE_URL: postgres://user:password123@postgres:5432/hubigr?sslmode=disable
+      DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: super-secret-jwt-key-32-characters-long-for-development
-      BASE_URL: http://localhost:3000
+      JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-key-32-characters-long-for-development}
+      BASE_URL: ${BASE_URL:-http://localhost:3000}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}

@@ -284,3 +284,72 @@ func (r *UserRepo) UpdateAvatar(ctx context.Context, userID int64, avatarURL str
 	_, err := r.db.Exec(ctx, `UPDATE users SET avatar = $2 WHERE id = $1`, userID, avatarURL)
 	return err
 }
+
+// ADMIN METHODS - US-1.1.5
+
+// GetUsers - получение списка пользователей для админа
+func (r *UserRepo) GetUsers(ctx context.Context, limit, offset int) ([]domain.User, int, error) {
+	// Получаем общее количество
+	var total int
+	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Получаем пользователей с пагинацией
+	rows, err := r.db.Query(ctx, `
+		SELECT id, email, hash, role, nick, avatar, bio, links, is_banned,
+		       email_verified, created_at, privacy_settings
+		FROM users
+		ORDER BY created_at DESC
+		LIMIT $1 OFFSET $2
+	`, limit, offset)
+
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var users []domain.User
+	for rows.Next() {
+		var u domain.User
+		var linksJSON []byte
+		var privacyJSON []byte
+
+		err := rows.Scan(&u.ID, &u.Email, &u.Hash, &u.Role, &u.Nick, &u.Avatar, &u.Bio,
+			&linksJSON, &u.IsBanned, &u.EmailVerified, &u.CreatedAt, &privacyJSON)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		if err := json.Unmarshal(linksJSON, &u.Links); err != nil {
+			u.Links = []domain.Link{}
+		}
+		if err := json.Unmarshal(privacyJSON, &u.PrivacySettings); err != nil {
+			u.PrivacySettings = domain.PrivacySettings{}
+		}
+
+		// Очищаем хеш пароля для безопасности
+		u.Hash = ""
+
+		users = append(users, u)
+	}
+
+	return users, total, nil
+}
+
+// UpdateUserRole - изменение роли пользователя
+func (r *UserRepo) UpdateUserRole(ctx context.Context, userID int64, role string) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE users SET role = $2 WHERE id = $1
+	`, userID, role)
+	return err
+}
+
+// UpdateUserBanStatus - изменение статуса бана пользователя
+func (r *UserRepo) UpdateUserBanStatus(ctx context.Context, userID int64, banned bool) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE users SET is_banned = $2 WHERE id = $1
+	`, userID, banned)
+	return err
+}

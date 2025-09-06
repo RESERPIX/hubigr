@@ -10,7 +10,7 @@ import (
 
 var (
 	emailRegex    = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
-	passwordRegex = regexp.MustCompile(`^[0-9A-Za-z!"#$%&'()*+,./:;<=>?@\[\\\]^_{}-]+$`)
+	passwordRegex = regexp.MustCompile(`^[0-9A-Za-z!"#$%&'()*+,\-./:;<=>?@\[\\\]^_{|}~]+$`)
 	nickRegex     = regexp.MustCompile(`^[A-Za-zА-Яа-я]+$`)
 	urlRegex      = regexp.MustCompile(`^https?://[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:/[^\s]*)?$`)
 )

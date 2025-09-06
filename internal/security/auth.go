@@ -85,3 +85,8 @@ func HashRefreshToken(token string) (string, error) {
 func VerifyRefreshToken(hash, token string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(token)) == nil
 }
+
+// VerifyCSRFToken проверяет CSRF токен (простое сравнение)
+func VerifyCSRFToken(expected, provided string) bool {
+	return expected == provided && expected != ""
+}

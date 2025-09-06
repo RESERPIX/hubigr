@@ -1,6 +1,8 @@
 package http
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"strings"
 	"time"
@@ -84,6 +86,70 @@ func RateLimitMiddleware(limiter *ratelimit.RedisLimiter, prefix string, limit i
 		
 		return c.Next()
 	}
+}
+
+// CSRFMiddleware - защита от CSRF атак согласно ТЗ
+func CSRFMiddleware() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		// Пропускаем GET, HEAD, OPTIONS запросы
+		if c.Method() == "GET" || c.Method() == "HEAD" || c.Method() == "OPTIONS" {
+			return c.Next()
+		}
+
+		// Получаем CSRF токен из заголовка
+		csrfToken := c.Get("X-CSRF-Token")
+		if csrfToken == "" {
+			// Также проверяем в форме для обратной совместимости
+			csrfToken = c.FormValue("csrf_token")
+		}
+
+		if csrfToken == "" {
+			return c.Status(403).JSON(domain.NewError("csrf_required", "CSRF токен обязателен"))
+		}
+
+		// Получаем ожидаемый токен из куки
+		expectedToken := c.Cookies("csrf_token")
+		if expectedToken == "" {
+			return c.Status(403).JSON(domain.NewError("csrf_missing", "CSRF токен не найден в куки"))
+		}
+
+		// Проверяем соответствие токенов
+		if !security.VerifyCSRFToken(expectedToken, csrfToken) {
+			return c.Status(403).JSON(domain.NewError("csrf_invalid", "Неверный CSRF токен"))
+		}
+
+		return c.Next()
+	}
+}
+
+// GenerateCSRFToken генерирует новый CSRF токен и устанавливает его в куки
+func GenerateCSRFToken(c *fiber.Ctx) string {
+	token, err := generateCSRFToken()
+	if err != nil {
+		logger.Error("Failed to generate CSRF token", "error", err)
+		return ""
+	}
+
+	// Устанавливаем токен в куки (httpOnly для безопасности)
+	c.Cookie(&fiber.Cookie{
+		Name:     "csrf_token",
+		Value:    token,
+		HTTPOnly: true,
+		Secure:   true, // Только HTTPS в продакшене
+		SameSite: "strict",
+		MaxAge:   3600, // 1 час
+	})
+
+	return token
+}
+
+// generateCSRFToken генерирует случайный CSRF токен
+func generateCSRFToken() (string, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
 }
 
 // LoggingMiddleware - логирование действий пользователей

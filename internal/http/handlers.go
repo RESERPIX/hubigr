@@ -1,7 +1,9 @@
 package http
 
 import (
+	"fmt"
 	"mime/multipart"
+	"strconv"
 	"strings"
 
 	"github.com/RESERPIX/hubigr/internal/captcha"
@@ -552,4 +554,174 @@ func (h *Handlers) RefreshToken(c *fiber.Ctx) error {
 		AccessToken:  accessToken,
 		RefreshToken: newRefreshToken,
 	})
+}
+
+// ADMIN HANDLERS - US-1.1.5 из ТЗ
+
+// GetUsers - получение списка пользователей для админа
+func (h *Handlers) GetUsers(c *fiber.Ctx) error {
+	// Пагинация
+	page := c.QueryInt("page", 1)
+	limit := c.QueryInt("limit", 20)
+
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
+
+	offset := (page - 1) * limit
+
+	users, total, err := h.userRepo.GetUsers(c.Context(), limit, offset)
+	if err != nil {
+		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка получения пользователей"))
+	}
+
+	return c.JSON(fiber.Map{
+		"users": users,
+		"total": total,
+		"page":  page,
+		"limit": limit,
+	})
+}
+
+// UpdateUserRole - изменение роли пользователя
+func (h *Handlers) UpdateUserRole(c *fiber.Ctx) error {
+	userIDStr := c.Params("id")
+	if userIDStr == "" {
+		return c.Status(400).JSON(domain.NewError("bad_request", "ID пользователя обязателен"))
+	}
+
+	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+	if err != nil {
+		return c.Status(400).JSON(domain.NewError("bad_request", "Неверный ID пользователя"))
+	}
+
+	var req struct {
+		Role string `json:"role"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(domain.NewError("bad_request", "Неверный формат данных"))
+	}
+
+	// Валидация роли
+	validRoles := map[string]bool{
+		"participant": true,
+		"jury":        true,
+		"moderator":   true,
+		"admin":       true,
+		"organizer":   true,
+	}
+
+	if !validRoles[req.Role] {
+		return c.Status(400).JSON(domain.NewError("invalid_role", "Неверная роль"))
+	}
+
+	// Получаем ID текущего админа
+	adminID, ok := c.Locals("user_id").(int64)
+	if !ok {
+		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка получения ID админа"))
+	}
+
+	// Логируем действие
+	logger.Info("Admin role update",
+		"admin_id", adminID,
+		"target_user_id", userID,
+		"new_role", req.Role,
+	)
+
+	if err := h.userRepo.UpdateUserRole(c.Context(), userID, req.Role); err != nil {
+		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка обновления роли"))
+	}
+
+	return c.JSON(fiber.Map{"message": "Роль пользователя обновлена"})
+}
+
+// BanUser - бан пользователя
+func (h *Handlers) BanUser(c *fiber.Ctx) error {
+	userIDStr := c.Params("id")
+	if userIDStr == "" {
+		return c.Status(400).JSON(domain.NewError("bad_request", "ID пользователя обязателен"))
+	}
+
+	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+	if err != nil {
+		return c.Status(400).JSON(domain.NewError("bad_request", "Неверный ID пользователя"))
+	}
+
+	var req struct {
+		Banned bool   `json:"banned"`
+		Reason string `json:"reason,omitempty"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(domain.NewError("bad_request", "Неверный формат данных"))
+	}
+
+	// Получаем ID текущего админа
+	adminID, ok := c.Locals("user_id").(int64)
+	if !ok {
+		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка получения ID админа"))
+	}
+
+	// Логируем действие
+	action := "ban"
+	if !req.Banned {
+		action = "unban"
+	}
+
+	logger.Info("Admin user ban/unban",
+		"admin_id", adminID,
+		"target_user_id", userID,
+		"action", action,
+		"reason", req.Reason,
+	)
+
+	if err := h.userRepo.UpdateUserBanStatus(c.Context(), userID, req.Banned); err != nil {
+		return c.Status(500).JSON(domain.NewError("internal_error", "Ошибка обновления статуса бана"))
+	}
+
+	// Если бан, отзываем все токены
+	if req.Banned {
+		h.refreshRepo.RevokeUserTokens(c.Context(), userID)
+	}
+
+	message := "Пользователь заблокирован"
+	if !req.Banned {
+		message = "Пользователь разблокирован"
+	}
+
+	return c.JSON(fiber.Map{"message": message})
+}
+
+// GetUserDetails - получение детальной информации о пользователе
+func (h *Handlers) GetUserDetails(c *fiber.Ctx) error {
+	userIDStr := c.Params("id")
+	if userIDStr == "" {
+		return c.Status(400).JSON(domain.NewError("bad_request", "ID пользователя обязателен"))
+	}
+
+	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+	if err != nil {
+		return c.Status(400).JSON(domain.NewError("bad_request", "Неверный ID пользователя"))
+	}
+
+	user, err := h.userRepo.GetByID(c.Context(), userID)
+	if err != nil {
+		return c.Status(404).JSON(domain.NewError("not_found", "Пользователь не найден"))
+	}
+
+	// Очистка хеша пароля
+	user.Hash = ""
+
+	return c.JSON(user)
+}
+
+// parseUserID - вспомогательная функция для парсинга ID
+func (h *Handlers) parseUserID(idStr string) (int64, error) {
+	var id int64
+	_, err := fmt.Sscanf(idStr, "%d", &id)
+	return id, err
 }

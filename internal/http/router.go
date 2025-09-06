@@ -31,7 +31,7 @@ func SetupRoutes(app *fiber.App, handlers *Handlers, jwtSecret string, corsOrigi
 	auth.Post("/signup", LoginRateLimitMiddleware(handlers.limiter), handlers.SignUp)
 	// Login outside group to bypass middleware
 	api.Post("/auth/login", LoginRateLimitMiddleware(handlers.limiter), handlers.Login)
-	auth.Post("/logout", AuthMiddleware(jwtSecret), handlers.Logout)
+	auth.Post("/logout", AuthMiddleware(jwtSecret), CSRFMiddleware(), handlers.Logout)
 	auth.Post("/refresh", LoginRateLimitMiddleware(handlers.limiter), handlers.RefreshToken)
 	auth.Post("/verify-email", handlers.VerifyEmail)
 	auth.Post("/resend-verification", LoginRateLimitMiddleware(handlers.limiter), handlers.ResendVerification)
@@ -39,7 +39,7 @@ func SetupRoutes(app *fiber.App, handlers *Handlers, jwtSecret string, corsOrigi
 	auth.Post("/reset-password/confirm", handlers.ResetPasswordConfirm)
 
 	// Profile routes (API-4.6 - API-4.8 из ТЗ)
-	profile := api.Group("/profile", AuthMiddleware(jwtSecret), LoggingMiddleware(), RateLimitMiddleware(handlers.limiter, "profile", 30, time.Minute))
+	profile := api.Group("/profile", AuthMiddleware(jwtSecret), LoggingMiddleware(), RateLimitMiddleware(handlers.limiter, "profile", 30, time.Minute), CSRFMiddleware())
 	profile.Get("/", handlers.GetProfile)
 	profile.Put("/", handlers.UpdateProfile)
 	profile.Get("/notifications", handlers.GetNotifications)
@@ -50,16 +50,25 @@ func SetupRoutes(app *fiber.App, handlers *Handlers, jwtSecret string, corsOrigi
 	// Безопасная раздача статических файлов (аватары)
 	app.Get("/uploads/*", SecureStaticHandler)
 
-	// Admin routes (для будущего расширения)
+	// Admin routes (US-1.1.5 из ТЗ)
 	admin := api.Group("/admin", AuthMiddleware(jwtSecret), RoleMiddleware(domain.RoleAdmin, domain.RoleModerator))
-	_ = admin // Пока не используется
+	admin.Get("/users", handlers.GetUsers)
+	admin.Get("/users/:id", handlers.GetUserDetails)
+	admin.Put("/users/:id/role", CSRFMiddleware(), handlers.UpdateUserRole)
+	admin.Put("/users/:id/ban", CSRFMiddleware(), handlers.BanUser)
 
 	// Health check
 	api.Get("/health", handlers.Health)
-	
-	// Test endpoint without any middleware
-	api.Post("/test-login", handlers.Login)
-	
+
+	// CSRF token endpoint
+	api.Get("/csrf-token", func(c *fiber.Ctx) error {
+		token := GenerateCSRFToken(c)
+		return c.JSON(fiber.Map{"csrf_token": token})
+	})
+
+	// Test endpoint without any middleware - COMMENTED OUT FOR PRODUCTION SECURITY
+	// api.Post("/test-login", handlers.Login)
+
 	// Metrics endpoints
 	api.Get("/metrics", handlers.Metrics)
 	api.Get("/metrics/prometheus", handlers.PrometheusMetrics)
